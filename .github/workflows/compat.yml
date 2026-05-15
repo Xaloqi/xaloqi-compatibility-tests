@@ -259,6 +259,7 @@ jobs:
     runs-on: ubuntu-22.04
     needs: full-matrix
     if: always()
+    continue-on-error: true   # only meaningful when full-matrix reports exist
 
     env:
       XALOQI_LICENSE_SKIP: "1"

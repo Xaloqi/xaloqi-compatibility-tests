@@ -209,6 +209,7 @@ jobs:
       - name: Set up vcan0
         if: matrix.transport == 'CAN'
         run: |
+          sudo apt-get install -y --no-install-recommends linux-modules-extra-azure 2>/dev/null || true
           sudo modprobe vcan
           sudo ip link add dev vcan0 type vcan
           sudo ip link set up vcan0
@@ -304,12 +305,12 @@ jobs:
 
       - name: Generate HTML comparison report
         run: |
-          testlab report \
-            --results reports/basic_ecu_run.json \
-                      reports/basic_ecu_doip_run.json \
-                      reports/basic_ecu_freertos_run.json \
-                      reports/basic_ecu_doip_freertos_run.json \
-            --out     reports/compat_matrix.html
+          jsons=$(ls reports/*_run.json 2>/dev/null | tr '\n' ' ')
+          if [ -z "$jsons" ]; then
+            echo "No JSON reports available — skipping HTML generation."
+            exit 0
+          fi
+          testlab report --results $jsons --out reports/compat_matrix.html
 
       - name: Upload comparison report
         uses: actions/upload-artifact@v4

@@ -61,7 +61,7 @@ jobs:
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |
-          pip install "git+https://${GH_PAT}@github.com/Xaloqi/TestLab.git@main#egg=xaloqi-tester[dev]"
+          pip install "xaloqi-tester[dev] @ git+https://${GH_PAT}@github.com/Xaloqi/TestLab.git@main"
 
       - name: Validate campaign YAML (--dry-run)
         run: |
@@ -151,7 +151,7 @@ jobs:
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |
-          pip install "git+https://${GH_PAT}@github.com/Xaloqi/TestLab.git@main#egg=xaloqi-tester[dev]"
+          pip install "xaloqi-tester[dev] @ git+https://${GH_PAT}@github.com/Xaloqi/TestLab.git@main"
 
       - name: Check out Xaloqi EDS
         uses: actions/checkout@v4
@@ -275,7 +275,7 @@ jobs:
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |
-          pip install "git+https://${GH_PAT}@github.com/Xaloqi/TestLab.git@main#egg=xaloqi-tester[dev]"
+          pip install "xaloqi-tester[dev] @ git+https://${GH_PAT}@github.com/Xaloqi/TestLab.git@main"
 
       - name: Download all reports
         uses: actions/download-artifact@v4

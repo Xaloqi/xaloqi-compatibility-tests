@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: [main]
   schedule:
-    # Run nightly at 02:00 UTC to catch regressions from upstream changes
+    # Nightly at 02:00 UTC — catches regressions from upstream changes
     - cron: "0 2 * * *"
   workflow_dispatch:
 
@@ -14,11 +14,18 @@ concurrency:
   group: compat-${{ github.ref }}
   cancel-in-progress: true
 
+# ---------------------------------------------------------------------------
+# Secrets required (Settings → Secrets → Actions):
+#   GH_PAT  — personal access token with read access to Xaloqi/TestLab
+#              and Xaloqi/EDS (fine-grained or classic, repo scope).
+# ---------------------------------------------------------------------------
+
 jobs:
   # ---------------------------------------------------------------------------
   # Job 1: Virtual validation
-  # Runs on every push. No ECU builds, no hardware. Proves campaign YAML is
-  # valid and the TestLab runner + VirtualBus ECU sim all agree.
+  # Runs on every push/PR. No ECU builds, no hardware. Installs xaloqi-tester
+  # from the private TestLab repo and runs the campaign against the in-process
+  # VirtualBus ECU simulator. Drives the public status badge.
   # ---------------------------------------------------------------------------
   virtual-validation:
     name: "Virtual validation (all services, no hardware)"
@@ -30,21 +37,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check out Xaloqi TestLab
-        uses: actions/checkout@v4
-        with:
-          repository: Xaloqi/TestLab
-          token: ${{ secrets.GH_PAT }}
-          path: TestLab
-          ref: main
-
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
+      - name: Verify GH_PAT is configured
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          if [ -z "$GH_PAT" ]; then
+            echo "::error::GH_PAT secret is not set."
+            echo ""
+            echo "Add a personal access token with read access to Xaloqi/TestLab:"
+            echo "  Settings → Secrets and variables → Actions → New repository secret"
+            echo "  Name: GH_PAT"
+            echo "  Value: <your PAT with repo read scope>"
+            exit 1
+          fi
+          echo "GH_PAT is configured."
+
       - name: Install xaloqi-tester
-        run: pip install -e "TestLab[dev]"
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          pip install "git+https://${GH_PAT}@github.com/Xaloqi/TestLab.git@main#egg=xaloqi-tester[dev]"
 
       - name: Validate campaign YAML (--dry-run)
         run: |
@@ -53,8 +70,9 @@ jobs:
             --campaign campaigns/core_validation.yaml \
             --dry-run
 
-      - name: Run virtual campaign (basic_ecu)
+      - name: Run virtual campaign
         run: |
+          mkdir -p reports
           testlab-run \
             --config   configs/basic_ecu.yaml \
             --campaign campaigns/core_validation.yaml \
@@ -74,46 +92,48 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Job 2: Full compatibility matrix (Zephyr + FreeRTOS builds)
-  # Requires private EDS repo access (GH_PAT secret). Runs on push to main
-  # and nightly. Builds all four ECU simulator variants, runs the same campaign
-  # against each, and cross-compares results.
+  # Builds each ECU simulator from source, launches it, and runs the same
+  # campaign against each variant. continue-on-error: true keeps the badge
+  # green (driven by virtual-validation above) while full builds are in
+  # progress or unavailable.
   # ---------------------------------------------------------------------------
   full-matrix:
     name: "Full matrix (${{ matrix.target }})"
     runs-on: ubuntu-22.04
-    continue-on-error: true   # badge driven by virtual-validation; full builds need GH_PAT
+    needs: virtual-validation
+    continue-on-error: true
 
     strategy:
       fail-fast: false
       matrix:
         include:
-          - target:     basic_ecu
-            transport:  CAN
-            rtos:       Zephyr
-            board:      native_sim
-            config_arg: "--config configs/basic_ecu.yaml --interface vcan0"
-            build_type: zephyr
+          - target:      basic_ecu
+            transport:   CAN
+            rtos:        Zephyr
+            board:       native_sim
+            config_flag: "--config configs/basic_ecu.yaml --interface vcan0"
+            build_type:  zephyr
 
-          - target:     basic_ecu_doip
-            transport:  DoIP
-            rtos:       Zephyr
-            board:      native_sim
-            config_arg: "--workspace configs/basic_ecu_doip.yaml"
-            build_type: zephyr
+          - target:      basic_ecu_doip
+            transport:   DoIP
+            rtos:        Zephyr
+            board:       native_sim
+            config_flag: "--workspace configs/basic_ecu_doip.yaml"
+            build_type:  zephyr
 
-          - target:     basic_ecu_freertos
-            transport:  CAN
-            rtos:       FreeRTOS
-            board:      qemu_cortex_m4
-            config_arg: "--config configs/basic_ecu_freertos.yaml --interface vcan0"
-            build_type: freertos
+          - target:      basic_ecu_freertos
+            transport:   CAN
+            rtos:        FreeRTOS
+            board:       qemu_cortex_m4
+            config_flag: "--config configs/basic_ecu_freertos.yaml --interface vcan0"
+            build_type:  freertos
 
-          - target:     basic_ecu_doip_freertos
-            transport:  DoIP
-            rtos:       FreeRTOS
-            board:      qemu_cortex_m4
-            config_arg: "--workspace configs/basic_ecu_doip_freertos.yaml"
-            build_type: freertos
+          - target:      basic_ecu_doip_freertos
+            transport:   DoIP
+            rtos:        FreeRTOS
+            board:       qemu_cortex_m4
+            config_flag: "--workspace configs/basic_ecu_doip_freertos.yaml"
+            build_type:  freertos
 
     env:
       XALOQI_LICENSE_SKIP: "1"
@@ -122,13 +142,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check out Xaloqi TestLab
-        uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
         with:
-          repository: Xaloqi/TestLab
-          token: ${{ secrets.GH_PAT }}
-          path: TestLab
-          ref: main
+          python-version: "3.12"
+
+      - name: Install xaloqi-tester
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          pip install "git+https://${GH_PAT}@github.com/Xaloqi/TestLab.git@main#egg=xaloqi-tester[dev]"
 
       - name: Check out Xaloqi EDS
         uses: actions/checkout@v4
@@ -138,15 +161,7 @@ jobs:
           path: EDS
           ref: main
 
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install xaloqi-tester
-        run: pip install -e "TestLab[dev]"
-
-      # ── Zephyr targets ──────────────────────────────────────────────────
+      # ── Zephyr targets ────────────────────────────────────────────────────
       - name: Install west + Zephyr SDK
         if: matrix.build_type == 'zephyr'
         run: |
@@ -165,8 +180,8 @@ jobs:
             --build-dir build/${{ matrix.target }} \
             EDS/examples/${{ matrix.target }}
 
-      # ── FreeRTOS targets ────────────────────────────────────────────────
-      - name: Install FreeRTOS-Kernel + QEMU + arm-none-eabi toolchain
+      # ── FreeRTOS targets ──────────────────────────────────────────────────
+      - name: Install FreeRTOS-Kernel + QEMU + toolchain
         if: matrix.build_type == 'freertos'
         run: |
           sudo apt-get update -q
@@ -187,15 +202,15 @@ jobs:
                 -DCMAKE_BUILD_TYPE=Release
           ninja -C build/${{ matrix.target }}
 
-      # ── CAN interface setup (CAN targets only) ──────────────────────────
+      # ── CAN interface setup ───────────────────────────────────────────────
       - name: Set up vcan0
-        if: contains(matrix.transport, 'CAN')
+        if: matrix.transport == 'CAN'
         run: |
           sudo modprobe vcan
           sudo ip link add dev vcan0 type vcan
           sudo ip link set up vcan0
 
-      # ── Launch ECU + run campaign ────────────────────────────────────────
+      # ── Launch ECU + run campaign ─────────────────────────────────────────
       - name: Launch ECU simulator
         run: |
           if [ "${{ matrix.build_type }}" = "zephyr" ]; then
@@ -213,10 +228,11 @@ jobs:
 
       - name: Run core_validation campaign
         run: |
+          mkdir -p reports
           testlab-run \
             --campaign campaigns/core_validation.yaml \
             --job      core_validation \
-            ${{ matrix.config_arg }} \
+            ${{ matrix.config_flag }} \
             --json     reports/${{ matrix.target }}_run.json
 
       - name: Stop ECU simulator
@@ -235,8 +251,8 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Job 3: Cross-target comparison
-  # Runs after all four matrix jobs complete. Downloads all four JSON reports
-  # and runs testlab compare between each pair.
+  # Downloads all four JSON reports and runs testlab compare between pairs.
+  # Warnings (not errors) on regression so the badge stays informational.
   # ---------------------------------------------------------------------------
   compare:
     name: "Cross-target comparison"
@@ -250,21 +266,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check out Xaloqi TestLab
-        uses: actions/checkout@v4
-        with:
-          repository: Xaloqi/TestLab
-          token: ${{ secrets.GH_PAT }}
-          path: TestLab
-          ref: main
-
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Install xaloqi-tester
-        run: pip install -e "TestLab[dev]"
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          pip install "git+https://${GH_PAT}@github.com/Xaloqi/TestLab.git@main#egg=xaloqi-tester[dev]"
 
       - name: Download all reports
         uses: actions/download-artifact@v4
@@ -278,14 +289,14 @@ jobs:
           testlab compare \
             --before reports/basic_ecu_run.json \
             --after  reports/basic_ecu_freertos_run.json \
-          || echo "::warning::Regression detected: basic_ecu vs basic_ecu_freertos"
+          || echo "::warning::Regression: basic_ecu vs basic_ecu_freertos"
 
       - name: Compare DoIP targets (Zephyr vs FreeRTOS)
         run: |
           testlab compare \
             --before reports/basic_ecu_doip_run.json \
             --after  reports/basic_ecu_doip_freertos_run.json \
-          || echo "::warning::Regression detected: basic_ecu_doip vs basic_ecu_doip_freertos"
+          || echo "::warning::Regression: basic_ecu_doip vs basic_ecu_doip_freertos"
 
       - name: Generate HTML comparison report
         run: |

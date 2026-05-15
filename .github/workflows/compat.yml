@@ -171,6 +171,7 @@ jobs:
           wget -q "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${ZEPHYR_SDK_VERSION}/zephyr-sdk-${ZEPHYR_SDK_VERSION}_linux-x86_64_minimal.tar.xz"
           tar xf "zephyr-sdk-${ZEPHYR_SDK_VERSION}_linux-x86_64_minimal.tar.xz" -C /opt
           /opt/zephyr-sdk-${ZEPHYR_SDK_VERSION}/setup.sh -t x86_64-zephyr-elf -c
+          pip install jinja2
           pip install -r EDS/scripts/requirements-base.txt 2>/dev/null || true
 
       - name: Build (Zephyr native_sim)
@@ -186,7 +187,7 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo apt-get install -y --no-install-recommends \
-            gcc-arm-none-eabi qemu-system-arm ninja-build
+            gcc-arm-none-eabi libnewlib-arm-none-eabi qemu-system-arm ninja-build
           git clone --depth=1 https://github.com/FreeRTOS/FreeRTOS-Kernel.git \
             /opt/freertos-kernel
 

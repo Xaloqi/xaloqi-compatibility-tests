@@ -162,6 +162,17 @@ jobs:
           ref: main
           submodules: recursive
 
+      - name: Check out EDS-toolchain (codegen templates + platform headers)
+        uses: actions/checkout@v4
+        with:
+          repository: Xaloqi/EDS-toolchain
+          token: ${{ secrets.GH_PAT }}
+          path: EDS-toolchain
+          ref: main
+
+      - name: Link codegen templates into EDS tree
+        run: ln -sf "$(realpath EDS-toolchain/tools/templates)" EDS/tools/templates
+
       # ── Zephyr targets ────────────────────────────────────────────────────
       - name: Install west + Zephyr SDK
         if: matrix.build_type == 'zephyr'
@@ -202,7 +213,8 @@ jobs:
                 -DFREERTOS_DIR=/opt/freertos-kernel \
                 -DBOARD=qemu_cortex_m4 \
                 -DCMAKE_BUILD_TYPE=Release \
-                -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
+                -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
+                "-DCMAKE_C_FLAGS=-I$(pwd)/EDS/platform/zephyr"
           ninja -C build/${{ matrix.target }}
 
       # ── CAN interface setup ───────────────────────────────────────────────

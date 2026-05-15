@@ -81,7 +81,7 @@ jobs:
   full-matrix:
     name: "Full matrix (${{ matrix.target }})"
     runs-on: ubuntu-22.04
-    if: ${{ secrets.GH_PAT != '' }}
+    continue-on-error: true   # badge driven by virtual-validation; full builds need GH_PAT
 
     strategy:
       fail-fast: false
@@ -242,7 +242,7 @@ jobs:
     name: "Cross-target comparison"
     runs-on: ubuntu-22.04
     needs: full-matrix
-    if: always() && needs.full-matrix.result != 'skipped'
+    if: always()
 
     env:
       XALOQI_LICENSE_SKIP: "1"

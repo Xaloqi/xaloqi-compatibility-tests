@@ -160,6 +160,7 @@ jobs:
           token: ${{ secrets.GH_PAT }}
           path: EDS
           ref: main
+          submodules: recursive
 
       # ── Zephyr targets ────────────────────────────────────────────────────
       - name: Install west + Zephyr SDK
@@ -200,7 +201,8 @@ jobs:
                 -DEDS_PLATFORM=freertos \
                 -DFREERTOS_DIR=/opt/freertos-kernel \
                 -DBOARD=qemu_cortex_m4 \
-                -DCMAKE_BUILD_TYPE=Release
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
           ninja -C build/${{ matrix.target }}
 
       # ── CAN interface setup ───────────────────────────────────────────────

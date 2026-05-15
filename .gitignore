@@ -1,0 +1,17 @@
+# Test reports — generated at runtime, never committed
+reports/
+
+# Build artifacts
+build/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*~

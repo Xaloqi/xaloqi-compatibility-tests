@@ -1,0 +1,26 @@
+# configs/basic_ecu_doip_freertos.yaml
+#
+# TestLab workspace config for: basic_ecu_doip_freertos (QEMU + LwIP, DoIP transport)
+#
+# Same transport parameters as basic_ecu_doip — only the RTOS differs.
+#
+# Run with:
+#   testlab-run --workspace configs/basic_ecu_doip_freertos.yaml \
+#               --campaign campaigns/core_validation.yaml \
+#               --job core_validation \
+#               --json reports/basic_ecu_doip_freertos_run.json
+
+workspace:
+  name:        basic_ecu_doip_freertos_compat
+  description: "BasicECU DoIP — QEMU + LwIP, FreeRTOS, DoIP loopback (ISO 13400-2 over TCP)"
+
+ecus:
+  - name:           ecu
+    interface:      doip
+    doip_host:      "127.0.0.1"
+    doip_port:      13400
+    source_address: "0x0E00"
+    target_address: "0xE400"
+    rx_id:          "0xE400"
+    tx_id:          "0x0E00"
+    role:           standalone

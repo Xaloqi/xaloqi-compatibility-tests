@@ -1,0 +1,76 @@
+# campaigns/core_validation.yaml
+#
+# Xaloqi Compatibility Tests — Core Validation Campaign
+#
+# This single campaign file runs UNCHANGED against all four ECU simulator
+# variants and proves identical pass/fail behaviour regardless of transport
+# (CAN / DoIP) or RTOS (Zephyr / FreeRTOS).
+#
+# Targets:
+#   basic_ecu              Zephyr native_sim   CAN (VirtualBus / vcan0)
+#   basic_ecu_doip         Zephyr native_sim   DoIP loopback 127.0.0.1:13400
+#   basic_ecu_freertos     QEMU Cortex-M4      CAN (vcan0)
+#   basic_ecu_doip_freertos QEMU + LwIP        DoIP loopback 127.0.0.1:13400
+#
+# Services exercised: 0x10 session, 0x3E tester present, 0x27 security access,
+#   0x22 DID read, 0x19 DTC read, 0x14 DTC clear.
+#
+# Run (--virtual for CI / quick validation, no ECU binary needed):
+#   testlab-run \
+#     --config  configs/basic_ecu.yaml \
+#     --campaign campaigns/core_validation.yaml \
+#     --job     core_validation \
+#     --virtual \
+#     --json    reports/virtual_run.json
+#
+# MIT License — https://github.com/Xaloqi/xaloqi-compatibility-tests
+
+jobs:
+
+  core_validation:
+    description: >
+      Core compatibility validation — session control, security access, VIN read,
+      DTC management, and tester present. Identical across all four ECU simulator
+      variants regardless of transport or RTOS. on_failure: continue so every
+      step runs and all failures are captured in the JSON report.
+    timeout_ms: 30000
+    on_failure:  continue
+
+    steps:
+
+      # ── Tester present ────────────────────────────────────────────────────────
+      # Verify the ECU is alive before doing anything. In default session.
+      - action: tester_present
+
+      # ── Enter extended session ────────────────────────────────────────────────
+      - action: session
+        value:  extended
+
+      # ── Security access level 1 ───────────────────────────────────────────────
+      # Full AES-128-CMAC seed / key exchange. Required before VIN write and
+      # secured DIDs. We unlock here so subsequent steps have full permissions.
+      - action: security_access
+        level:  1
+
+      # ── VIN read (DID 0xF190) ─────────────────────────────────────────────────
+      # min_session: default → readable in any session, no security needed.
+      # Saves raw bytes for optional assertion in extended campaigns.
+      - action: read_did
+        did:    "0xF190"
+        save_as: vin
+
+      # ── DTC read — snapshot before clear ─────────────────────────────────────
+      - action: read_dtc
+        save_as: dtcs_before
+
+      # ── DTC clear (group 0xFFFFFF = all DTCs) ────────────────────────────────
+      - action: clear_dtc
+        group:  "0xFFFFFF"
+
+      # ── DTC read — verify cleared ─────────────────────────────────────────────
+      - action: read_dtc
+        save_as: dtcs_after
+
+      # ── Return to default session ─────────────────────────────────────────────
+      - action: session
+        value:  default

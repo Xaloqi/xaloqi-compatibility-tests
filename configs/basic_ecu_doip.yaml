@@ -1,0 +1,24 @@
+# configs/basic_ecu_doip.yaml
+#
+# TestLab workspace config for: basic_ecu_doip (Zephyr native_sim, DoIP transport)
+#
+# Run with workspace mode (DoIP requires --workspace, not --config):
+#   testlab-run --workspace configs/basic_ecu_doip.yaml \
+#               --campaign campaigns/core_validation.yaml \
+#               --job core_validation \
+#               --json reports/basic_ecu_doip_run.json
+
+workspace:
+  name:        basic_ecu_doip_compat
+  description: "BasicECU DoIP — Zephyr native_sim, DoIP loopback (ISO 13400-2 over TCP)"
+
+ecus:
+  - name:           ecu
+    interface:      doip
+    doip_host:      "127.0.0.1"
+    doip_port:      13400
+    source_address: "0x0E00"    # tester logical address
+    target_address: "0xE400"    # ECU logical address
+    rx_id:          "0xE400"    # = target_address (required by schema, not used for DoIP routing)
+    tx_id:          "0x0E00"    # = source_address
+    role:           standalone

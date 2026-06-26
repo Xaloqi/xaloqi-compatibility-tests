@@ -61,6 +61,8 @@ jobs:
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |
+          # testlab-dashboard is a private submodule — skip it; not needed for xaloqi-tester
+          git config --global submodule.dashboard.active false
           pip install "xaloqi-tester[dev] @ git+https://${GH_PAT}@github.com/Xaloqi/TestLab.git@main"
 
       - name: Validate campaign YAML (--dry-run)
@@ -151,6 +153,8 @@ jobs:
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |
+          # testlab-dashboard is a private submodule — skip it; not needed for xaloqi-tester
+          git config --global submodule.dashboard.active false
           pip install "xaloqi-tester[dev] @ git+https://${GH_PAT}@github.com/Xaloqi/TestLab.git@main"
 
       - name: Check out Xaloqi EDS
@@ -292,6 +296,8 @@ jobs:
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |
+          # testlab-dashboard is a private submodule — skip it; not needed for xaloqi-tester
+          git config --global submodule.dashboard.active false
           pip install "xaloqi-tester[dev] @ git+https://${GH_PAT}@github.com/Xaloqi/TestLab.git@main"
 
       - name: Download all reports

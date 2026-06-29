@@ -61,9 +61,11 @@ jobs:
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |
-          # testlab-dashboard is a private submodule — skip it; not needed for xaloqi-tester
-          git config --global submodule.dashboard.active false
-          pip install "xaloqi-tester[dev] @ git+https://${GH_PAT}@github.com/Xaloqi/TestLab.git@main"
+          # Clone without submodules — testlab-dashboard is private and not needed for xaloqi-tester.
+          # pip's git+ URL always recurses submodules; cloning manually avoids that.
+          git clone --depth=1 --no-recurse-submodules \
+            "https://${GH_PAT}@github.com/Xaloqi/TestLab.git" /tmp/testlab
+          pip install "/tmp/testlab[dev]"
 
       - name: Validate campaign YAML (--dry-run)
         run: |
@@ -153,9 +155,11 @@ jobs:
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |
-          # testlab-dashboard is a private submodule — skip it; not needed for xaloqi-tester
-          git config --global submodule.dashboard.active false
-          pip install "xaloqi-tester[dev] @ git+https://${GH_PAT}@github.com/Xaloqi/TestLab.git@main"
+          # Clone without submodules — testlab-dashboard is private and not needed for xaloqi-tester.
+          # pip's git+ URL always recurses submodules; cloning manually avoids that.
+          git clone --depth=1 --no-recurse-submodules \
+            "https://${GH_PAT}@github.com/Xaloqi/TestLab.git" /tmp/testlab
+          pip install "/tmp/testlab[dev]"
 
       - name: Check out Xaloqi EDS
         uses: actions/checkout@v4
@@ -296,9 +300,11 @@ jobs:
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |
-          # testlab-dashboard is a private submodule — skip it; not needed for xaloqi-tester
-          git config --global submodule.dashboard.active false
-          pip install "xaloqi-tester[dev] @ git+https://${GH_PAT}@github.com/Xaloqi/TestLab.git@main"
+          # Clone without submodules — testlab-dashboard is private and not needed for xaloqi-tester.
+          # pip's git+ URL always recurses submodules; cloning manually avoids that.
+          git clone --depth=1 --no-recurse-submodules \
+            "https://${GH_PAT}@github.com/Xaloqi/TestLab.git" /tmp/testlab
+          pip install "/tmp/testlab[dev]"
 
       - name: Download all reports
         uses: actions/download-artifact@v4

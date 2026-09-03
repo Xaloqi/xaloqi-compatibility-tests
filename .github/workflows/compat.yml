@@ -192,6 +192,13 @@ jobs:
           pip install west
           west init -l EDS
           west update --narrow --fetch-opt=--depth=1
+          # Zephyr's own build scripts (gen_kobject_list.py etc.) need
+          # pyelftools and friends -- pre-existing gap, not previously
+          # installed here at all. Confirmed as the actual failure on
+          # main (every full-matrix Zephyr build already fails with
+          # "ModuleNotFoundError: No module named 'elftools'", masked by
+          # continue-on-error) while re-verifying the OD-14 fix.
+          pip install -r zephyr/scripts/requirements.txt
           wget -q "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${ZEPHYR_SDK_VERSION}/zephyr-sdk-${ZEPHYR_SDK_VERSION}_linux-x86_64_minimal.tar.xz"
           tar xf "zephyr-sdk-${ZEPHYR_SDK_VERSION}_linux-x86_64_minimal.tar.xz" -C /opt
           /opt/zephyr-sdk-${ZEPHYR_SDK_VERSION}/setup.sh -t x86_64-zephyr-elf -c

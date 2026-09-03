@@ -189,6 +189,14 @@ jobs:
       - name: Install west + Zephyr SDK
         if: matrix.build_type == 'zephyr'
         run: |
+          # native_sim builds 32-bit (-m32) using the HOST gcc, which needs
+          # 32-bit glibc dev headers/libs -- not present by default on the
+          # ubuntu-22.04 runner image. Confirmed the real cause of
+          # "fatal error: bits/libc-header-start.h: No such file or
+          # directory" here (standard Zephyr native_sim/native_posix
+          # requirement, just never installed in this workflow).
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends gcc-multilib g++-multilib
           pip install west
           west init -l EDS
           west update --narrow --fetch-opt=--depth=1
@@ -249,7 +257,14 @@ jobs:
       - name: Set up vcan0
         if: matrix.transport == 'CAN'
         run: |
-          sudo apt-get install -y --no-install-recommends linux-modules-extra-azure 2>/dev/null || true
+          # Install modules matching the ACTUAL running kernel, not the
+          # generic "-azure" meta-package (which resolves to whatever's
+          # latest in apt right now and can be one point release ahead of
+          # what this runner instance booted -- confirmed the real cause
+          # of intermittent "Module vcan not found in directory
+          # /lib/modules/<running-version>" failures here).
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends "linux-modules-extra-$(uname -r)"
           sudo modprobe vcan
           sudo ip link add dev vcan0 type vcan
           sudo ip link set up vcan0

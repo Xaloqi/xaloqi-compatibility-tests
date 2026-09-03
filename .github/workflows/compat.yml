@@ -201,9 +201,18 @@ jobs:
       - name: Build (Zephyr native_sim)
         if: matrix.build_type == 'zephyr'
         run: |
+          # -DDIAG_SKIP_CODEGEN=ON: use the pre-committed examples/*/generated/
+          # output as-is instead of letting the run_codegen custom target try
+          # to regenerate it. Required here, not optional: confirmed in this
+          # exact CI (see EDS#198) that a real actions/checkout@v4 + west
+          # build does NOT skip codegen via mtime staleness the way a plain
+          # local git clone appears to; without this flag the build fails
+          # with "Code generator templates not found" (no Developer license
+          # in this job for CAN targets).
           west build -p always -b ${{ matrix.board }} \
             --build-dir build/${{ matrix.target }} \
-            EDS/examples/${{ matrix.target }}
+            EDS/examples/${{ matrix.target }} \
+            -- -DDIAG_SKIP_CODEGEN=ON
 
       # ── FreeRTOS targets ──────────────────────────────────────────────────
       - name: Install FreeRTOS-Kernel + QEMU + toolchain

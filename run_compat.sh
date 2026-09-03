@@ -6,7 +6,8 @@
 # campaigns pass and cross-target diffs are clean.
 #
 # Prerequisites:
-#   pip install -e ../TestLab                  # xaloqi-tester + testlab-run CLI
+#   pip install xaloqi-tester                  # free, public (CAN targets + virtual)
+#   ..or the TestLab Pro package for DoIP targets — see README "Core vs. Pro"
 #   west (Zephyr SDK) — for Zephyr targets
 #   arm-none-eabi-gcc / qemu-system-arm       — for FreeRTOS / QEMU targets
 #   sudo modprobe vcan && sudo ip link add dev vcan0 type vcan && sudo ip link set up vcan0
@@ -97,7 +98,7 @@ require_cmd() {
 require_testlab() {
     if ! command -v testlab-run &>/dev/null; then
         echo "ERROR: testlab-run not found." >&2
-        echo "  Install with: pip install -e ../TestLab" >&2
+        echo "  Install with: pip install xaloqi-tester" >&2
         exit 1
     fi
 }

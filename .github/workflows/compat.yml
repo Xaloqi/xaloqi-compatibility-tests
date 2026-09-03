@@ -15,17 +15,25 @@ concurrency:
   cancel-in-progress: true
 
 # ---------------------------------------------------------------------------
-# Secrets required (Settings → Secrets → Actions):
+# Secrets required (Settings → Secrets → Actions), DoIP/comparison work only:
 #   GH_PAT  — personal access token with read access to Xaloqi/TestLab
-#              and Xaloqi/EDS (fine-grained or classic, repo scope).
+#              (repo scope). Needed only by the DoIP full-matrix legs and
+#              the cross-target comparison job, both of which install the
+#              TestLab Pro package (workspace/DoIP transport and the
+#              `report`/`compare` CLI commands are Pro-only, per the OD-15
+#              open-core split — xaloqi.com). virtual-validation and the
+#              CAN full-matrix legs need no secret at all: they install the
+#              free, public `xaloqi-tester` package from PyPI, so anyone
+#              who forks this repo can reproduce the badge with zero setup.
 # ---------------------------------------------------------------------------
 
 jobs:
   # ---------------------------------------------------------------------------
   # Job 1: Virtual validation
-  # Runs on every push/PR. No ECU builds, no hardware. Installs xaloqi-tester
-  # from the private TestLab repo and runs the campaign against the in-process
-  # VirtualBus ECU simulator. Drives the public status badge.
+  # Runs on every push/PR. No ECU builds, no hardware, no secrets. Installs
+  # the free, public xaloqi-tester package from PyPI and runs the campaign
+  # against the in-process VirtualBus ECU simulator. Drives the public
+  # status badge — independently reproducible by anyone (OD-14).
   # ---------------------------------------------------------------------------
   virtual-validation:
     name: "Virtual validation (all services, no hardware)"
@@ -42,30 +50,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Verify GH_PAT is configured
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
-        run: |
-          if [ -z "$GH_PAT" ]; then
-            echo "::error::GH_PAT secret is not set."
-            echo ""
-            echo "Add a personal access token with read access to Xaloqi/TestLab:"
-            echo "  Settings → Secrets and variables → Actions → New repository secret"
-            echo "  Name: GH_PAT"
-            echo "  Value: <your PAT with repo read scope>"
-            exit 1
-          fi
-          echo "GH_PAT is configured."
-
-      - name: Install xaloqi-tester
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
-        run: |
-          # Clone without submodules — testlab-dashboard is private and not needed for xaloqi-tester.
-          # pip's git+ URL always recurses submodules; cloning manually avoids that.
-          git clone --depth=1 --no-recurse-submodules \
-            "https://${GH_PAT}@github.com/Xaloqi/TestLab.git" /tmp/testlab
-          pip install "/tmp/testlab[dev]"
+      - name: Install xaloqi-tester (free, public — no secret needed)
+        run: pip install xaloqi-tester
 
       - name: Validate campaign YAML (--dry-run)
         run: |
@@ -151,7 +137,27 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install xaloqi-tester
+      # CAN targets: free, public xaloqi-tester — no secret needed.
+      - name: Install xaloqi-tester (free, public)
+        if: matrix.transport == 'CAN'
+        run: pip install xaloqi-tester
+
+      # DoIP targets: real DoIP transport + --workspace are TestLab Pro
+      # features (post OD-15 open-core split), so these two legs alone
+      # still need the private-repo Pro package. This job is already
+      # continue-on-error and doesn't drive the public badge.
+      - name: Verify GH_PAT is configured (DoIP targets need TestLab Pro)
+        if: matrix.transport == 'DoIP'
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          if [ -z "$GH_PAT" ]; then
+            echo "::error::GH_PAT secret is not set. DoIP targets need TestLab Pro (private repo) — see the top-of-file note. Skipping is fine; virtual-validation and the CAN legs don't need it."
+            exit 1
+          fi
+
+      - name: Install xaloqi-tester (TestLab Pro, for DoIP/--workspace)
+        if: matrix.transport == 'DoIP'
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |
@@ -161,25 +167,23 @@ jobs:
             "https://${GH_PAT}@github.com/Xaloqi/TestLab.git" /tmp/testlab
           pip install "/tmp/testlab[dev]"
 
+      # EDS is public — no token needed to check it out.
       - name: Check out Xaloqi EDS
         uses: actions/checkout@v4
         with:
           repository: Xaloqi/EDS
-          token: ${{ secrets.GH_PAT }}
           path: EDS
           ref: main
           submodules: recursive
 
-      - name: Check out EDS-toolchain (codegen templates + platform headers)
-        uses: actions/checkout@v4
-        with:
-          repository: Xaloqi/EDS-toolchain
-          token: ${{ secrets.GH_PAT }}
-          path: EDS-toolchain
-          ref: main
-
-      - name: Link codegen templates into EDS tree
-        run: ln -sf "$(realpath EDS-toolchain/tools/templates)" EDS/tools/templates
+      # No EDS-toolchain checkout, no template symlink: every EDS example
+      # ships its generated C pre-committed (examples/*/generated/), so
+      # `west build`/cmake below builds directly from that — no codegen
+      # invocation, no commercial templates needed (OD-14 Option 2). This
+      # is also the first real test of EDS#198 (does a genuine CI checkout
+      # + west build actually skip codegen via mtime staleness, with no
+      # tools/templates/ present at all) rather than continued reasoning
+      # about it.
 
       # ── Zephyr targets ────────────────────────────────────────────────────
       - name: Install west + Zephyr SDK
@@ -296,7 +300,11 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install xaloqi-tester
+      # `testlab compare`/`report` are TestLab Pro CLI commands (post OD-15
+      # split), so this informational job keeps using the private Pro
+      # package + GH_PAT. It's continue-on-error and doesn't drive the
+      # public badge, so this doesn't affect OD-14 reproducibility.
+      - name: Install xaloqi-tester (TestLab Pro, for compare/report)
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |

@@ -5,10 +5,16 @@
 
 One campaign. Four ECU simulators. Same result, every time.
 
-This repository runs an identical [Xaloqi TestLab](https://github.com/Xaloqi/TestLab)
+This repository runs an identical [Xaloqi TestLab](https://github.com/Xaloqi/xaloqi-testlab-core)
 campaign against all four Xaloqi ECU simulator variants and proves they produce
 equivalent diagnostic behaviour regardless of transport (CAN / DoIP) or RTOS
 (Zephyr / FreeRTOS).
+
+The **virtual validation and the two CAN targets run entirely on the free,
+public [`xaloqi-tester`](https://pypi.org/project/xaloqi-tester/) package —
+no license, no private-repo access.** The two DoIP targets use TestLab
+Pro's real DoIP transport (`--workspace` mode) and require a license — see
+[Core vs. Pro](#core-vs-pro-what-this-repo-needs) below.
 
 ---
 
@@ -46,14 +52,14 @@ changes per target.
 
 ### Option A — Quick check (in-process, no builds, no hardware)
 
-Requires only Python 3.9+ and Xaloqi TestLab:
+Requires only Python 3.9+ and the free, public `xaloqi-tester` package —
+no license, no private-repo access:
 
 ```bash
 git clone https://github.com/Xaloqi/xaloqi-compatibility-tests
 cd xaloqi-compatibility-tests
 
-# Install TestLab (or: pip install xaloqi-tester if you have a license key)
-pip install -e ../TestLab
+pip install xaloqi-tester
 
 # Run the virtual validation — proves the campaign YAML is correct
 XALOQI_LICENSE_SKIP=1 ./run_compat.sh --virtual
@@ -77,7 +83,11 @@ Expected output:
 ### Option B — Full matrix (all four ECU builds)
 
 Requires Zephyr SDK, FreeRTOS-Kernel, QEMU, and the Xaloqi EDS repo as a sibling
-directory (`../EDS`):
+directory (`../EDS`). The two **CAN** targets (`basic_ecu`,
+`basic_ecu_freertos`) run on the same free `xaloqi-tester` package as
+Option A. The two **DoIP** targets (`basic_ecu_doip`,
+`basic_ecu_doip_freertos`) use TestLab Pro's real DoIP transport — see
+[Core vs. Pro](#core-vs-pro-what-this-repo-needs).
 
 ```bash
 # Set up vcan0 (once per boot)
@@ -156,9 +166,9 @@ LICENSE                         MIT
                     testlab report  (HTML matrix)
 ```
 
-Each ECU simulator is built from the same Xaloqi EDS C source — same UDS stack,
-same AES-128-CMAC security, same 14 service handlers. The transport layer (ISO-TP
-CAN or ISO 13400-2 DoIP) and RTOS are the only variables. The campaign proves they
+Each ECU simulator is built from the same Xaloqi EDS C source — same UDS stack
+(19 services), same AES-128-CMAC security. The transport layer (ISO-TP CAN or
+ISO 13400-2 DoIP) and RTOS are the only variables. The campaign proves they
 are externally indistinguishable at the UDS protocol level.
 
 ---
@@ -172,10 +182,29 @@ EDS implementation behaves identically across all supported configurations.
 
 ---
 
+## Core vs. Pro — what this repo needs
+
+This repo tests the same six free UDS actions (session control,
+SecurityAccess, DID read, DTC read/clear, TesterPresent) across all four
+targets. What differs is the *transport*:
+
+| | CAN targets (`basic_ecu`, `basic_ecu_freertos`) | DoIP targets (`basic_ecu_doip`, `basic_ecu_doip_freertos`) |
+|---|---|---|
+| Package | `xaloqi-tester` (free, [PyPI](https://pypi.org/project/xaloqi-tester/)) | TestLab Pro (real DoIP transport + `--workspace` mode) |
+| License | None | [xaloqi.com](https://xaloqi.com) |
+| Reproducible by anyone | ✅ | Needs Pro |
+
+Virtual validation (the badge above) and the CI's `full-matrix` CAN legs run
+on the free package with no secret. The DoIP legs and the cross-target
+`compare`/`report` step are informational, `continue-on-error`, and use
+TestLab Pro in CI — same boundary as [`xaloqi-testlab-core`](https://github.com/Xaloqi/xaloqi-testlab-core#whats-in-pro).
+
+---
+
 ## Related
 
-- [Xaloqi TestLab](https://github.com/Xaloqi/TestLab) — campaign runner and UDS library used here
-- [Xaloqi EDS](https://xaloqi.com/eds) — the ECU firmware this tests (commercial)
+- [Xaloqi TestLab Core](https://github.com/Xaloqi/xaloqi-testlab-core) — free, open-source campaign runner and UDS client used here
+- [Xaloqi EDS](https://github.com/Xaloqi/EDS) — the ECU firmware this tests (open-core; runtime + examples are free, code generation is commercial)
 
 ---
 

@@ -283,8 +283,21 @@ jobs:
           # is why native_sim_realcan.conf must drop CONFIG_CAN_LOOPBACK
           # itself rather than relying on the default overlay being
           # layered underneath.
+          # matrix.extra_conf may be a ';'-separated list (Zephyr's own
+          # EXTRA_CONF_FILE list syntax, used by basic_ecu_doip to combine
+          # native_sim.conf with native_sim_doip_realzeth.conf) -- prefix
+          # EACH entry with the absolute EDS checkout path, not the joined
+          # string. A prior version of this PR shipped without this loop:
+          # the second-and-later entries stayed relative and CMake's
+          # configure step failed outright (caught immediately post-merge
+          # by real CI, not assumed fixed).
+          IFS=';' read -ra CONF_PARTS <<< "${{ matrix.extra_conf }}"
+          ABS_CONFS=""
+          for part in "${CONF_PARTS[@]}"; do
+            ABS_CONFS="${ABS_CONFS:+${ABS_CONFS};}$(pwd)/EDS/${part}"
+          done
           BUILD_ARGS=(-DDIAG_SKIP_CODEGEN=ON
-                      "-DEXTRA_CONF_FILE=$(pwd)/EDS/${{ matrix.extra_conf }}")
+                      "-DEXTRA_CONF_FILE=${ABS_CONFS}")
           if [ -n "${{ matrix.extra_overlay }}" ]; then
             BUILD_ARGS+=("-DDTC_OVERLAY_FILE=$(pwd)/EDS/${{ matrix.extra_overlay }}")
           fi

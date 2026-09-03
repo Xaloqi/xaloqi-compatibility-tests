@@ -203,6 +203,18 @@ repo makes. `full-matrix` and the cross-target `compare`/`report` step are
 informational, `continue-on-error`, and use TestLab Pro in CI regardless
 of target — same boundary as [`xaloqi-testlab-core`](https://github.com/Xaloqi/xaloqi-testlab-core#whats-in-pro).
 
+### Known limitation: `full-matrix` isn't green yet
+
+The four real-transport builds (`full-matrix`) currently fail — this
+doesn't affect the badge above, which is driven by `virtual-validation`
+only. Each failure is a real, tracked infrastructure gap, not a mystery:
+no QEMU↔`vcan0` CAN bridge exists yet ([#3](https://github.com/Xaloqi/xaloqi-compatibility-tests/issues/3)),
+native_sim's DoIP host-network bridge (`zeth`) isn't set up
+([#4](https://github.com/Xaloqi/xaloqi-compatibility-tests/issues/4)), and
+native_sim's CAN build uses an in-process loopback device rather than a
+real `vcan0` bridge ([EDS#231](https://github.com/Xaloqi/EDS/issues/231)).
+Tracking index: [#2](https://github.com/Xaloqi/xaloqi-compatibility-tests/issues/2).
+
 ---
 
 ## Related

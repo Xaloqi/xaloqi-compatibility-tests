@@ -8,7 +8,7 @@
 #
 # Targets:
 #   basic_ecu              Zephyr native_sim   CAN (VirtualBus / vcan0)
-#   basic_ecu_doip         Zephyr native_sim   DoIP loopback 127.0.0.1:13400
+#   basic_ecu_doip         Zephyr native_sim   DoIP over real zeth bridge 192.0.2.1:13400
 #   basic_ecu_freertos     QEMU Cortex-M4      CAN (vcan0)
 #   basic_ecu_doip_freertos QEMU + LwIP        DoIP loopback 127.0.0.1:13400
 #

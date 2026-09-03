@@ -120,16 +120,33 @@ jobs:
             extra_conf:    boards/native_sim/native_sim_realcan.conf
             extra_overlay: boards/native_sim/native_sim_realcan.overlay
             needs_zcan_altname: true
+            needs_zeth: false
 
+          # compat-tests#4 / EDS#230: basic_ecu_doip (native_sim DoIP) now
+          # builds against a real host "zeth" TAP bridge instead of only
+          # ever being reachable from inside the same Zephyr process.
+          # native_sim_doip_realzeth.conf (new in EDS) replaces
+          # native_sim_doip.conf here -- the old file's CONFIG_NET_LOOPBACK=y
+          # silently dropped the whole Ethernet driver subtree (Kconfig
+          # default chain) AND created a competing Zephyr-internal net_if
+          # that stole the static IP assignment; see the new conf file's own
+          # header comment in EDS for the full root-cause trace. needs_zeth
+          # triggers net-tools' net-setup.sh (no altname needed, unlike the
+          # CAN case -- zeth is used at its own default name). Verified
+          # end-to-end against real CI before this became permanent (9
+          # throwaway-branch iterations, since deleted): real ARP resolution
+          # on the host's zeth device, 8/8 UDS ops over real DoIP/TCP, real
+          # 102-204ms timings.
           - target:      basic_ecu_doip
             transport:   DoIP
             rtos:        Zephyr
             board:       native_sim
             config_flag: "--workspace configs/basic_ecu_doip.yaml"
             build_type:  zephyr
-            extra_conf:    boards/native_sim/native_sim.conf
+            extra_conf:    "boards/native_sim/native_sim.conf;examples/basic_ecu_doip/boards/native_sim/native_sim_doip_realzeth.conf"
             extra_overlay: ""
             needs_zcan_altname: false
+            needs_zeth: true
 
           - target:      basic_ecu_freertos
             transport:   CAN
@@ -140,6 +157,7 @@ jobs:
             extra_conf:    ""
             extra_overlay: ""
             needs_zcan_altname: false
+            needs_zeth: false
 
           - target:      basic_ecu_doip_freertos
             transport:   DoIP
@@ -150,6 +168,7 @@ jobs:
             extra_conf:    ""
             extra_overlay: ""
             needs_zcan_altname: false
+            needs_zeth: false
 
     env:
       XALOQI_LICENSE_SKIP: "1"
@@ -322,6 +341,22 @@ jobs:
             sudo ip link property add dev vcan0 altname zcan0
           fi
 
+      # ── DoIP interface setup ──────────────────────────────────────────────
+      # compat-tests#4 / EDS#230: native_sim's CONFIG_ETH_NATIVE_POSIX driver
+      # expects the host-side "zeth" TAP interface to already exist (unlike
+      # vcan0 above, this isn't a generic Linux device -- it's created by
+      # Zephyr's own net-tools project). net-tools' zeth.conf default pairing
+      # (host 192.0.2.2 / native_sim-side 192.0.2.1) matches
+      # native_sim_doip_realzeth.conf's static IP in EDS -- no altname or
+      # extra config needed here, unlike the CAN case.
+      - name: Set up zeth (native_sim DoIP)
+        if: matrix.needs_zeth == true
+        run: |
+          git clone --depth=1 https://github.com/zephyrproject-rtos/net-tools /tmp/net-tools
+          cd /tmp/net-tools
+          sudo ./net-setup.sh start &
+          sleep 3
+
       # ── Launch ECU + run campaign ─────────────────────────────────────────
       - name: Launch ECU simulator
         run: |
@@ -337,6 +372,14 @@ jobs:
           fi
           echo "ECU_PID=$!" >> "$GITHUB_ENV"
           sleep 2
+          # native_sim's real Ethernet bring-up (ARP settle on the zeth
+          # bridge) needs more than the base 2s the other targets use --
+          # the throwaway verification run wasn't reliably reachable until
+          # several seconds past launch. Loopback/vcan0 targets don't need
+          # this extra margin.
+          if [ "${{ matrix.needs_zeth }}" = "true" ]; then
+            sleep 6
+          fi
 
       - name: Run core_validation campaign
         run: |

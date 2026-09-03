@@ -156,7 +156,7 @@ LICENSE                         MIT
 │ basic_ecu    │     │ basic_ecu_doip   │     │ basic_ecu_freertos │  ...
 │ Zephyr       │     │ Zephyr           │     │ FreeRTOS           │
 │ native_sim   │     │ native_sim       │     │ QEMU Cortex-M4     │
-│ CAN/vcan0    │     │ DoIP 127.0.0.1   │     │ CAN/vcan0          │
+│ CAN/vcan0    │     │ DoIP 192.0.2.1   │     │ CAN/vcan0          │
 └──────┬───────┘     └──────────┬───────┘     └────────┬───────────┘
        │ JSON report            │ JSON report           │ JSON report
        └────────────────────────┼───────────────────────┘
@@ -207,14 +207,17 @@ of target — same boundary as [`xaloqi-testlab-core`](https://github.com/Xaloqi
 
 Some of the real-transport builds (`full-matrix`) still fail — this
 doesn't affect the badge above, which is driven by `virtual-validation`
-only. `basic_ecu` (native_sim, real CAN) now builds and runs against a
-real `vcan0` bridge, not an in-process loopback device
-([EDS#231](https://github.com/Xaloqi/EDS/issues/231), fixed). The
-remaining gaps are real, tracked infrastructure, not a mystery: no
-QEMU↔`vcan0` CAN bridge exists yet
+only. Two native_sim targets now build and run against real host bridges
+instead of in-process loopback devices: `basic_ecu` (real CAN, `vcan0`,
+[EDS#231](https://github.com/Xaloqi/EDS/issues/231)) and `basic_ecu_doip`
+(real DoIP, `zeth`, [EDS#230](https://github.com/Xaloqi/EDS/issues/230) /
+[#4](https://github.com/Xaloqi/xaloqi-compatibility-tests/issues/4)), both
+fixed. The remaining gaps are real, tracked infrastructure, not a
+mystery: no QEMU↔`vcan0` CAN bridge exists yet
 ([#3](https://github.com/Xaloqi/xaloqi-compatibility-tests/issues/3)),
-and native_sim's DoIP host-network bridge (`zeth`) isn't set up
-([#4](https://github.com/Xaloqi/xaloqi-compatibility-tests/issues/4)).
+and QEMU's own `hostfwd` DoIP path is still refused, unrelated to the
+native_sim fix above
+([#7](https://github.com/Xaloqi/xaloqi-compatibility-tests/issues/7)).
 Tracking index: [#2](https://github.com/Xaloqi/xaloqi-compatibility-tests/issues/2).
 
 ---

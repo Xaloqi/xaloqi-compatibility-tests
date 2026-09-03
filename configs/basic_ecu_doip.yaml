@@ -10,12 +10,19 @@
 
 workspace:
   name:        basic_ecu_doip_compat
-  description: "BasicECU DoIP — Zephyr native_sim, DoIP loopback (ISO 13400-2 over TCP)"
+  description: "BasicECU DoIP — Zephyr native_sim, real zeth bridge (ISO 13400-2 over TCP)"
 
 ecus:
   - name:           ecu
     interface:      doip
-    doip_host:      "127.0.0.1"
+    # compat-tests#4 / EDS#230: 127.0.0.1 is Zephyr's own internal,
+    # simulated loopback -- never reachable from a separate host process.
+    # 192.0.2.1 is native_sim's real address on the host-side "zeth" TAP
+    # bridge (net-tools' own default pairing, host side 192.0.2.2), which
+    # this repo's CI now sets up. Reproducing locally needs the same bridge:
+    # see the "Set up zeth (native_sim DoIP)" step in
+    # .github/workflows/compat.yml, or net-tools' own README.
+    doip_host:      "192.0.2.1"
     doip_port:      13400
     source_address: "0x0E00"    # tester logical address
     target_address: "0xE400"    # ECU logical address

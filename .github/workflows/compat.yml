@@ -15,17 +15,29 @@ concurrency:
   cancel-in-progress: true
 
 # ---------------------------------------------------------------------------
-# Secrets required (Settings → Secrets → Actions):
+# Secrets required (Settings → Secrets → Actions), full-matrix/comparison work only:
 #   GH_PAT  — personal access token with read access to Xaloqi/TestLab
-#              and Xaloqi/EDS (fine-grained or classic, repo scope).
+#              (repo scope). Needed by every full-matrix leg (both CAN and
+#              DoIP) and the cross-target comparison job, all of which
+#              install the TestLab Pro package. Real transports --
+#              `socketcan` (what the CAN legs use via --interface vcan0)
+#              and `doip` alike -- plus `--workspace` mode and the
+#              `report`/`compare` CLI commands are all Pro-only, per the
+#              OD-15 open-core split (xaloqi.com); only `--virtual` is
+#              free. virtual-validation needs no secret at all: it installs
+#              the free, public `xaloqi-tester` package from PyPI, so
+#              anyone who forks this repo can reproduce the badge with
+#              zero setup -- that's the actual OD-14 boundary (--virtual
+#              vs. any real transport), not "CAN vs. DoIP".
 # ---------------------------------------------------------------------------
 
 jobs:
   # ---------------------------------------------------------------------------
   # Job 1: Virtual validation
-  # Runs on every push/PR. No ECU builds, no hardware. Installs xaloqi-tester
-  # from the private TestLab repo and runs the campaign against the in-process
-  # VirtualBus ECU simulator. Drives the public status badge.
+  # Runs on every push/PR. No ECU builds, no hardware, no secrets. Installs
+  # the free, public xaloqi-tester package from PyPI and runs the campaign
+  # against the in-process VirtualBus ECU simulator. Drives the public
+  # status badge — independently reproducible by anyone (OD-14).
   # ---------------------------------------------------------------------------
   virtual-validation:
     name: "Virtual validation (all services, no hardware)"
@@ -42,30 +54,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Verify GH_PAT is configured
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
-        run: |
-          if [ -z "$GH_PAT" ]; then
-            echo "::error::GH_PAT secret is not set."
-            echo ""
-            echo "Add a personal access token with read access to Xaloqi/TestLab:"
-            echo "  Settings → Secrets and variables → Actions → New repository secret"
-            echo "  Name: GH_PAT"
-            echo "  Value: <your PAT with repo read scope>"
-            exit 1
-          fi
-          echo "GH_PAT is configured."
-
-      - name: Install xaloqi-tester
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
-        run: |
-          # Clone without submodules — testlab-dashboard is private and not needed for xaloqi-tester.
-          # pip's git+ URL always recurses submodules; cloning manually avoids that.
-          git clone --depth=1 --no-recurse-submodules \
-            "https://${GH_PAT}@github.com/Xaloqi/TestLab.git" /tmp/testlab
-          pip install "/tmp/testlab[dev]"
+      - name: Install xaloqi-tester (free, public — no secret needed)
+        run: pip install xaloqi-tester
 
       - name: Validate campaign YAML (--dry-run)
         run: |
@@ -151,7 +141,24 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install xaloqi-tester
+      # CORRECTION: every full-matrix target needs TestLab Pro, not just
+      # DoIP. Confirmed empirically -- 'socketcan' (the real vcan0
+      # transport the CAN targets use via --interface) is Pro-gated
+      # exactly like 'doip' is (xaloqi/tester/_plugins.py PRO_TRANSPORTS
+      # = {"socketcan", "pcan", "kvaser", "doip", "someip", "sovd"}). Only
+      # `--virtual` (virtual-validation) is free -- that's the actual
+      # OD-14 boundary, not "CAN vs DoIP" as an earlier pass here assumed.
+      # This job is continue-on-error and doesn't drive the public badge.
+      - name: Verify GH_PAT is configured (full-matrix needs TestLab Pro)
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          if [ -z "$GH_PAT" ]; then
+            echo "::error::GH_PAT secret is not set. Every full-matrix target needs TestLab Pro (real socketcan/DoIP transports) — see the top-of-file note. Skipping is fine; virtual-validation doesn't need it."
+            exit 1
+          fi
+
+      - name: Install xaloqi-tester (TestLab Pro, for real socketcan/DoIP transports)
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |
@@ -161,33 +168,46 @@ jobs:
             "https://${GH_PAT}@github.com/Xaloqi/TestLab.git" /tmp/testlab
           pip install "/tmp/testlab[dev]"
 
+      # EDS is public — no token needed to check it out.
       - name: Check out Xaloqi EDS
         uses: actions/checkout@v4
         with:
           repository: Xaloqi/EDS
-          token: ${{ secrets.GH_PAT }}
           path: EDS
           ref: main
           submodules: recursive
 
-      - name: Check out EDS-toolchain (codegen templates + platform headers)
-        uses: actions/checkout@v4
-        with:
-          repository: Xaloqi/EDS-toolchain
-          token: ${{ secrets.GH_PAT }}
-          path: EDS-toolchain
-          ref: main
-
-      - name: Link codegen templates into EDS tree
-        run: ln -sf "$(realpath EDS-toolchain/tools/templates)" EDS/tools/templates
+      # No EDS-toolchain checkout, no template symlink: every EDS example
+      # ships its generated C pre-committed (examples/*/generated/), so
+      # `west build`/cmake below builds directly from that — no codegen
+      # invocation, no commercial templates needed (OD-14 Option 2). This
+      # is also the first real test of EDS#198 (does a genuine CI checkout
+      # + west build actually skip codegen via mtime staleness, with no
+      # tools/templates/ present at all) rather than continued reasoning
+      # about it.
 
       # ── Zephyr targets ────────────────────────────────────────────────────
       - name: Install west + Zephyr SDK
         if: matrix.build_type == 'zephyr'
         run: |
+          # native_sim builds 32-bit (-m32) using the HOST gcc, which needs
+          # 32-bit glibc dev headers/libs -- not present by default on the
+          # ubuntu-22.04 runner image. Confirmed the real cause of
+          # "fatal error: bits/libc-header-start.h: No such file or
+          # directory" here (standard Zephyr native_sim/native_posix
+          # requirement, just never installed in this workflow).
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends gcc-multilib g++-multilib
           pip install west
           west init -l EDS
           west update --narrow --fetch-opt=--depth=1
+          # Zephyr's own build scripts (gen_kobject_list.py etc.) need
+          # pyelftools and friends -- pre-existing gap, not previously
+          # installed here at all. Confirmed as the actual failure on
+          # main (every full-matrix Zephyr build already fails with
+          # "ModuleNotFoundError: No module named 'elftools'", masked by
+          # continue-on-error) while re-verifying the OD-14 fix.
+          pip install -r zephyr/scripts/requirements.txt
           wget -q "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${ZEPHYR_SDK_VERSION}/zephyr-sdk-${ZEPHYR_SDK_VERSION}_linux-x86_64_minimal.tar.xz"
           tar xf "zephyr-sdk-${ZEPHYR_SDK_VERSION}_linux-x86_64_minimal.tar.xz" -C /opt
           /opt/zephyr-sdk-${ZEPHYR_SDK_VERSION}/setup.sh -t x86_64-zephyr-elf -c
@@ -197,9 +217,27 @@ jobs:
       - name: Build (Zephyr native_sim)
         if: matrix.build_type == 'zephyr'
         run: |
+          # -DDIAG_SKIP_CODEGEN=ON: use the pre-committed examples/*/generated/
+          # output as-is instead of letting the run_codegen custom target try
+          # to regenerate it. Required here, not optional: confirmed in this
+          # exact CI (see EDS#198) that a real actions/checkout@v4 + west
+          # build does NOT skip codegen via mtime staleness the way a plain
+          # local git clone appears to; without this flag the build fails
+          # with "Code generator templates not found" (no Developer license
+          # in this job for CAN targets).
+          # -DEXTRA_CONF_FILE=.../native_sim.conf: EDS's own CI passes this
+          # for every native_sim build (see EDS/.github/workflows/ci.yml) --
+          # it sets CONFIG_REBOOT=y among other native_sim-specific Kconfig
+          # overrides. Without it, zephyr_port_ecu_reset() links against
+          # sys_reboot() with the reboot subsystem disabled: "undefined
+          # reference to `sys_reboot'" at link time. Must be an absolute
+          # path -- EDS's own CI comments document that EXTRA_CONF_FILE
+          # with a relative path resolves outside the workspace.
           west build -p always -b ${{ matrix.board }} \
             --build-dir build/${{ matrix.target }} \
-            EDS/examples/${{ matrix.target }}
+            EDS/examples/${{ matrix.target }} \
+            -- -DDIAG_SKIP_CODEGEN=ON \
+               "-DEXTRA_CONF_FILE=$(pwd)/EDS/boards/native_sim/native_sim.conf"
 
       # ── FreeRTOS targets ──────────────────────────────────────────────────
       - name: Install FreeRTOS-Kernel + QEMU + toolchain
@@ -229,7 +267,14 @@ jobs:
       - name: Set up vcan0
         if: matrix.transport == 'CAN'
         run: |
-          sudo apt-get install -y --no-install-recommends linux-modules-extra-azure 2>/dev/null || true
+          # Install modules matching the ACTUAL running kernel, not the
+          # generic "-azure" meta-package (which resolves to whatever's
+          # latest in apt right now and can be one point release ahead of
+          # what this runner instance booted -- confirmed the real cause
+          # of intermittent "Module vcan not found in directory
+          # /lib/modules/<running-version>" failures here).
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends "linux-modules-extra-$(uname -r)"
           sudo modprobe vcan
           sudo ip link add dev vcan0 type vcan
           sudo ip link set up vcan0
@@ -296,7 +341,11 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install xaloqi-tester
+      # `testlab compare`/`report` are TestLab Pro CLI commands (post OD-15
+      # split), so this informational job keeps using the private Pro
+      # package + GH_PAT. It's continue-on-error and doesn't drive the
+      # public badge, so this doesn't affect OD-14 reproducibility.
+      - name: Install xaloqi-tester (TestLab Pro, for compare/report)
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |

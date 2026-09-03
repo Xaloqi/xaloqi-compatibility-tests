@@ -224,10 +224,19 @@ jobs:
           # local git clone appears to; without this flag the build fails
           # with "Code generator templates not found" (no Developer license
           # in this job for CAN targets).
+          # -DEXTRA_CONF_FILE=.../native_sim.conf: EDS's own CI passes this
+          # for every native_sim build (see EDS/.github/workflows/ci.yml) --
+          # it sets CONFIG_REBOOT=y among other native_sim-specific Kconfig
+          # overrides. Without it, zephyr_port_ecu_reset() links against
+          # sys_reboot() with the reboot subsystem disabled: "undefined
+          # reference to `sys_reboot'" at link time. Must be an absolute
+          # path -- EDS's own CI comments document that EXTRA_CONF_FILE
+          # with a relative path resolves outside the workspace.
           west build -p always -b ${{ matrix.board }} \
             --build-dir build/${{ matrix.target }} \
             EDS/examples/${{ matrix.target }} \
-            -- -DDIAG_SKIP_CODEGEN=ON
+            -- -DDIAG_SKIP_CODEGEN=ON \
+               "-DEXTRA_CONF_FILE=$(pwd)/EDS/boards/native_sim/native_sim.conf"
 
       # ── FreeRTOS targets ──────────────────────────────────────────────────
       - name: Install FreeRTOS-Kernel + QEMU + toolchain

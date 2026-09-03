@@ -101,12 +101,25 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # EDS#231: basic_ecu (native_sim CAN) now builds against a real
+          # host vcan0 bridge instead of Zephyr's in-process
+          # can_loopback0 device — extra_conf/extra_overlay select
+          # native_sim_realcan.{conf,overlay} instead of the default
+          # native_sim.conf, and needs_zcan_altname adds vcan0's "zcan0"
+          # altname (the real can0 devicetree node's default host
+          # interface). Verified end-to-end against real CI before this
+          # became permanent (throwaway cross-repo branch, since
+          # deleted): device `can` not `can_loopback0`, 8/8 UDS ops,
+          # 2-44ms real timing.
           - target:      basic_ecu
             transport:   CAN
             rtos:        Zephyr
             board:       native_sim
             config_flag: "--config configs/basic_ecu.yaml --interface vcan0"
             build_type:  zephyr
+            extra_conf:    boards/native_sim/native_sim_realcan.conf
+            extra_overlay: boards/native_sim/native_sim_realcan.overlay
+            needs_zcan_altname: true
 
           - target:      basic_ecu_doip
             transport:   DoIP
@@ -114,6 +127,9 @@ jobs:
             board:       native_sim
             config_flag: "--workspace configs/basic_ecu_doip.yaml"
             build_type:  zephyr
+            extra_conf:    boards/native_sim/native_sim.conf
+            extra_overlay: ""
+            needs_zcan_altname: false
 
           - target:      basic_ecu_freertos
             transport:   CAN
@@ -121,6 +137,9 @@ jobs:
             board:       qemu_cortex_m4
             config_flag: "--config configs/basic_ecu_freertos.yaml --interface vcan0"
             build_type:  freertos
+            extra_conf:    ""
+            extra_overlay: ""
+            needs_zcan_altname: false
 
           - target:      basic_ecu_doip_freertos
             transport:   DoIP
@@ -128,6 +147,9 @@ jobs:
             board:       qemu_cortex_m4
             config_flag: "--workspace configs/basic_ecu_doip_freertos.yaml"
             build_type:  freertos
+            extra_conf:    ""
+            extra_overlay: ""
+            needs_zcan_altname: false
 
     env:
       XALOQI_LICENSE_SKIP: "1"
@@ -225,7 +247,7 @@ jobs:
           # local git clone appears to; without this flag the build fails
           # with "Code generator templates not found" (no Developer license
           # in this job for CAN targets).
-          # -DEXTRA_CONF_FILE=.../native_sim.conf: EDS's own CI passes this
+          # -DEXTRA_CONF_FILE=.../native_sim*.conf: EDS's own CI passes this
           # for every native_sim build (see EDS/.github/workflows/ci.yml) --
           # it sets CONFIG_REBOOT=y among other native_sim-specific Kconfig
           # overrides. Without it, zephyr_port_ecu_reset() links against
@@ -233,11 +255,24 @@ jobs:
           # reference to `sys_reboot'" at link time. Must be an absolute
           # path -- EDS's own CI comments document that EXTRA_CONF_FILE
           # with a relative path resolves outside the workspace.
+          #
+          # -DDTC_OVERLAY_FILE=...: only set for basic_ecu (see
+          # matrix.extra_overlay, EDS#231) -- redirects the `can0` alias
+          # from the in-process can_loopback0 device to the real
+          # native-linux-can node. This OVERRIDES rather than combines
+          # with Zephyr's auto-included per-example board overlay, which
+          # is why native_sim_realcan.conf must drop CONFIG_CAN_LOOPBACK
+          # itself rather than relying on the default overlay being
+          # layered underneath.
+          BUILD_ARGS=(-DDIAG_SKIP_CODEGEN=ON
+                      "-DEXTRA_CONF_FILE=$(pwd)/EDS/${{ matrix.extra_conf }}")
+          if [ -n "${{ matrix.extra_overlay }}" ]; then
+            BUILD_ARGS+=("-DDTC_OVERLAY_FILE=$(pwd)/EDS/${{ matrix.extra_overlay }}")
+          fi
           west build -p always -b ${{ matrix.board }} \
             --build-dir build/${{ matrix.target }} \
             EDS/examples/${{ matrix.target }} \
-            -- -DDIAG_SKIP_CODEGEN=ON \
-               "-DEXTRA_CONF_FILE=$(pwd)/EDS/boards/native_sim/native_sim.conf"
+            -- "${BUILD_ARGS[@]}"
 
       # ── FreeRTOS targets ──────────────────────────────────────────────────
       - name: Install FreeRTOS-Kernel + QEMU + toolchain
@@ -278,6 +313,14 @@ jobs:
           sudo modprobe vcan
           sudo ip link add dev vcan0 type vcan
           sudo ip link set up vcan0
+          # EDS#231: the real native-linux-can devicetree node (used by
+          # basic_ecu via native_sim_realcan.overlay) defaults to host
+          # interface "zcan0" -- add it as an altname rather than
+          # renaming vcan0 itself, so the other CAN targets on this same
+          # vcan0 are unaffected.
+          if [ "${{ matrix.needs_zcan_altname }}" = "true" ]; then
+            sudo ip link property add dev vcan0 altname zcan0
+          fi
 
       # ── Launch ECU + run campaign ─────────────────────────────────────────
       - name: Launch ECU simulator

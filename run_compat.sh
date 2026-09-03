@@ -6,8 +6,10 @@
 # campaigns pass and cross-target diffs are clean.
 #
 # Prerequisites:
-#   pip install xaloqi-tester                  # free, public (CAN targets + virtual)
-#   ..or the TestLab Pro package for DoIP targets — see README "Core vs. Pro"
+#   pip install xaloqi-tester                  # free, public -- --virtual only
+#   ..or the TestLab Pro package for the full build matrix (all four targets
+#   use a real transport -- socketcan or DoIP -- both Pro-gated; see README
+#   "Core vs. Pro")
 #   west (Zephyr SDK) — for Zephyr targets
 #   arm-none-eabi-gcc / qemu-system-arm       — for FreeRTOS / QEMU targets
 #   sudo modprobe vcan && sudo ip link add dev vcan0 type vcan && sudo ip link set up vcan0

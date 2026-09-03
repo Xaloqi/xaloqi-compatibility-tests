@@ -15,16 +15,20 @@ concurrency:
   cancel-in-progress: true
 
 # ---------------------------------------------------------------------------
-# Secrets required (Settings → Secrets → Actions), DoIP/comparison work only:
+# Secrets required (Settings → Secrets → Actions), full-matrix/comparison work only:
 #   GH_PAT  — personal access token with read access to Xaloqi/TestLab
-#              (repo scope). Needed only by the DoIP full-matrix legs and
-#              the cross-target comparison job, both of which install the
-#              TestLab Pro package (workspace/DoIP transport and the
-#              `report`/`compare` CLI commands are Pro-only, per the OD-15
-#              open-core split — xaloqi.com). virtual-validation and the
-#              CAN full-matrix legs need no secret at all: they install the
-#              free, public `xaloqi-tester` package from PyPI, so anyone
-#              who forks this repo can reproduce the badge with zero setup.
+#              (repo scope). Needed by every full-matrix leg (both CAN and
+#              DoIP) and the cross-target comparison job, all of which
+#              install the TestLab Pro package. Real transports --
+#              `socketcan` (what the CAN legs use via --interface vcan0)
+#              and `doip` alike -- plus `--workspace` mode and the
+#              `report`/`compare` CLI commands are all Pro-only, per the
+#              OD-15 open-core split (xaloqi.com); only `--virtual` is
+#              free. virtual-validation needs no secret at all: it installs
+#              the free, public `xaloqi-tester` package from PyPI, so
+#              anyone who forks this repo can reproduce the badge with
+#              zero setup -- that's the actual OD-14 boundary (--virtual
+#              vs. any real transport), not "CAN vs. DoIP".
 # ---------------------------------------------------------------------------
 
 jobs:
@@ -137,27 +141,24 @@ jobs:
         with:
           python-version: "3.12"
 
-      # CAN targets: free, public xaloqi-tester — no secret needed.
-      - name: Install xaloqi-tester (free, public)
-        if: matrix.transport == 'CAN'
-        run: pip install xaloqi-tester
-
-      # DoIP targets: real DoIP transport + --workspace are TestLab Pro
-      # features (post OD-15 open-core split), so these two legs alone
-      # still need the private-repo Pro package. This job is already
-      # continue-on-error and doesn't drive the public badge.
-      - name: Verify GH_PAT is configured (DoIP targets need TestLab Pro)
-        if: matrix.transport == 'DoIP'
+      # CORRECTION: every full-matrix target needs TestLab Pro, not just
+      # DoIP. Confirmed empirically -- 'socketcan' (the real vcan0
+      # transport the CAN targets use via --interface) is Pro-gated
+      # exactly like 'doip' is (xaloqi/tester/_plugins.py PRO_TRANSPORTS
+      # = {"socketcan", "pcan", "kvaser", "doip", "someip", "sovd"}). Only
+      # `--virtual` (virtual-validation) is free -- that's the actual
+      # OD-14 boundary, not "CAN vs DoIP" as an earlier pass here assumed.
+      # This job is continue-on-error and doesn't drive the public badge.
+      - name: Verify GH_PAT is configured (full-matrix needs TestLab Pro)
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |
           if [ -z "$GH_PAT" ]; then
-            echo "::error::GH_PAT secret is not set. DoIP targets need TestLab Pro (private repo) — see the top-of-file note. Skipping is fine; virtual-validation and the CAN legs don't need it."
+            echo "::error::GH_PAT secret is not set. Every full-matrix target needs TestLab Pro (real socketcan/DoIP transports) — see the top-of-file note. Skipping is fine; virtual-validation doesn't need it."
             exit 1
           fi
 
-      - name: Install xaloqi-tester (TestLab Pro, for DoIP/--workspace)
-        if: matrix.transport == 'DoIP'
+      - name: Install xaloqi-tester (TestLab Pro, for real socketcan/DoIP transports)
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |

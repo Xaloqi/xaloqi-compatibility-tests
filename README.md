@@ -10,10 +10,11 @@ campaign against all four Xaloqi ECU simulator variants and proves they produce
 equivalent diagnostic behaviour regardless of transport (CAN / DoIP) or RTOS
 (Zephyr / FreeRTOS).
 
-The **virtual validation and the two CAN targets run entirely on the free,
-public [`xaloqi-tester`](https://pypi.org/project/xaloqi-tester/) package —
-no license, no private-repo access.** The two DoIP targets use TestLab
-Pro's real DoIP transport (`--workspace` mode) and require a license — see
+**The quick check below (`--virtual`) runs entirely on the free, public
+[`xaloqi-tester`](https://pypi.org/project/xaloqi-tester/) package — no
+license, no private-repo access.** The full four-target build matrix uses
+real transports (`socketcan` for the CAN targets, `doip` for the DoIP
+ones) — both are TestLab Pro features and require a license — see
 [Core vs. Pro](#core-vs-pro-what-this-repo-needs) below.
 
 ---
@@ -83,11 +84,9 @@ Expected output:
 ### Option B — Full matrix (all four ECU builds)
 
 Requires Zephyr SDK, FreeRTOS-Kernel, QEMU, and the Xaloqi EDS repo as a sibling
-directory (`../EDS`). The two **CAN** targets (`basic_ecu`,
-`basic_ecu_freertos`) run on the same free `xaloqi-tester` package as
-Option A. The two **DoIP** targets (`basic_ecu_doip`,
-`basic_ecu_doip_freertos`) use TestLab Pro's real DoIP transport — see
-[Core vs. Pro](#core-vs-pro-what-this-repo-needs).
+directory (`../EDS`). **All four targets connect over a real transport**
+(`socketcan` for the CAN targets, `doip` for the DoIP ones) and need
+TestLab Pro — see [Core vs. Pro](#core-vs-pro-what-this-repo-needs).
 
 ```bash
 # Set up vcan0 (once per boot)
@@ -185,19 +184,24 @@ EDS implementation behaves identically across all supported configurations.
 ## Core vs. Pro — what this repo needs
 
 This repo tests the same six free UDS actions (session control,
-SecurityAccess, DID read, DTC read/clear, TesterPresent) across all four
-targets. What differs is the *transport*:
+SecurityAccess, DID read, DTC read/clear, TesterPresent) against all four
+targets. What differs is the *transport* — and the free/Pro boundary
+tracks **`--virtual` vs. any real transport, not CAN vs. DoIP**: the real
+`socketcan` transport (what the CAN targets use via `--interface vcan0`)
+is Pro-gated exactly like `doip` is.
 
-| | CAN targets (`basic_ecu`, `basic_ecu_freertos`) | DoIP targets (`basic_ecu_doip`, `basic_ecu_doip_freertos`) |
+| | Virtual (this repo's quick check, above) | All four `full-matrix` targets |
 |---|---|---|
-| Package | `xaloqi-tester` (free, [PyPI](https://pypi.org/project/xaloqi-tester/)) | TestLab Pro (real DoIP transport + `--workspace` mode) |
+| Transport | in-process `VirtualBus` | real `socketcan` (vcan0) or real `doip` (TCP) |
+| Package | `xaloqi-tester` (free, [PyPI](https://pypi.org/project/xaloqi-tester/)) | TestLab Pro |
 | License | None | [xaloqi.com](https://xaloqi.com) |
 | Reproducible by anyone | ✅ | Needs Pro |
 
-Virtual validation (the badge above) and the CI's `full-matrix` CAN legs run
-on the free package with no secret. The DoIP legs and the cross-target
-`compare`/`report` step are informational, `continue-on-error`, and use
-TestLab Pro in CI — same boundary as [`xaloqi-testlab-core`](https://github.com/Xaloqi/xaloqi-testlab-core#whats-in-pro).
+Virtual validation (the badge above) runs on the free package with no
+secret — that's the actual public, independently-reproducible claim this
+repo makes. `full-matrix` and the cross-target `compare`/`report` step are
+informational, `continue-on-error`, and use TestLab Pro in CI regardless
+of target — same boundary as [`xaloqi-testlab-core`](https://github.com/Xaloqi/xaloqi-testlab-core#whats-in-pro).
 
 ---
 

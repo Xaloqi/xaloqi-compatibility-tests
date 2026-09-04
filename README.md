@@ -205,9 +205,26 @@ of target — same boundary as [`xaloqi-testlab-core`](https://github.com/Xaloqi
 
 ### Known limitation: `full-matrix` isn't green yet
 
-Some of the real-transport builds (`full-matrix`) still fail — this
-doesn't affect the badge above, which is driven by `virtual-validation`
-only. Two native_sim targets now build and run against real host bridges
+`full-matrix` legs are split into two tiers, and every run's **Matrix
+summary** job prints the per-leg truth:
+
+| Tier | Legs | Meaning |
+|---|---|---|
+| **verified** | `basic_ecu` (CAN/Zephyr), `basic_ecu_doip` (DoIP/Zephyr) | Currently passing. A failure here is a real regression and raises a loud CI error annotation. |
+| **experimental** | `basic_ecu_freertos`, `basic_ecu_doip_freertos` (both QEMU) | Known-blocked on missing infrastructure ([#3](https://github.com/Xaloqi/xaloqi-compatibility-tests/issues/3), [#7](https://github.com/Xaloqi/xaloqi-compatibility-tests/issues/7)). Reported honestly, not silently skipped. |
+
+Every leg stays `continue-on-error` on purpose: `full-matrix` needs
+`GH_PAT` for TestLab Pro, which a fork doesn't have, and the badge above
+is this workflow's own badge — so letting a leg fail the run would make
+the badge unreproducible for forkers and break the OD-14 boundary. Before
+the summary job existed, that had a real cost: a run reported *success*
+while three of its jobs were red, visible only by opening each one
+([#2](https://github.com/Xaloqi/xaloqi-compatibility-tests/issues/2) sat
+that way since at least 2026-08-25). The summary restores the signal
+without moving the badge.
+
+This doesn't affect the badge above, which is driven by
+`virtual-validation` only. Two native_sim targets now build and run against real host bridges
 instead of in-process loopback devices: `basic_ecu` (real CAN, `vcan0`,
 [EDS#231](https://github.com/Xaloqi/EDS/issues/231)) and `basic_ecu_doip`
 (real DoIP, `zeth`, [EDS#230](https://github.com/Xaloqi/EDS/issues/230) /

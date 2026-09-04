@@ -21,6 +21,11 @@ ones) — both are TestLab Pro features and require a license — see
 
 ## Compatibility matrix
 
+> **Two of the four variants are validated end to end against real transports;
+> two are not.** [`COVERAGE.md`](COVERAGE.md) is the precise statement of what
+> this repository does and does not prove, with the evidence and the reasons
+> for both gaps. Read that before relying on this as validation evidence.
+
 | Target | Transport | RTOS | Build |
 |---|---|---|---|
 | `basic_ecu` | CAN (ISO-TP, vcan0) | Zephyr 3.7 native_sim | `west build` |
@@ -204,6 +209,9 @@ informational, `continue-on-error`, and use TestLab Pro in CI regardless
 of target — same boundary as [`xaloqi-testlab-core`](https://github.com/Xaloqi/xaloqi-testlab-core#whats-in-pro).
 
 ### Known limitation: `full-matrix` isn't green yet
+
+Full detail, including why one of the two gaps is not closable in this CI
+model at all, is in [`COVERAGE.md`](COVERAGE.md).
 
 `full-matrix` legs are split into two tiers, and every run's **Matrix
 summary** job prints the per-leg truth:

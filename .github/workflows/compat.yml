@@ -122,9 +122,16 @@ jobs:
   # progress or unavailable.
   # ---------------------------------------------------------------------------
   full-matrix:
-    name: "Full matrix (${{ matrix.target }})"
+    name: "Full matrix (${{ matrix.target }})${{ matrix.experimental && ' [experimental]' || '' }}"
     runs-on: ubuntu-22.04
     needs: virtual-validation
+    # Still true for every leg: full-matrix needs GH_PAT (TestLab Pro), which a
+    # fork does not have, and the README badge is this workflow's own
+    # badge.svg. Letting any leg fail the run would make the badge
+    # unreproducible for forkers and break the OD-14 boundary. The honest
+    # signal is restored by the matrix-summary job below instead, which
+    # reports per-leg truth on every run and shouts when a *verified* leg
+    # breaks -- previously that was visible only by opening each job.
     continue-on-error: true
 
     strategy:
@@ -151,6 +158,8 @@ jobs:
             extra_overlay: boards/native_sim/native_sim_realcan.overlay
             needs_zcan_altname: true
             needs_zeth: false
+            experimental: false
+            blocked_by: ""
 
           # compat-tests#4 / EDS#230: basic_ecu_doip (native_sim DoIP) now
           # builds against a real host "zeth" TAP bridge instead of only
@@ -177,6 +186,8 @@ jobs:
             extra_overlay: ""
             needs_zcan_altname: false
             needs_zeth: true
+            experimental: false
+            blocked_by: ""
 
           - target:      basic_ecu_freertos
             transport:   CAN
@@ -188,6 +199,8 @@ jobs:
             extra_overlay: ""
             needs_zcan_altname: false
             needs_zeth: false
+            experimental: true
+            blocked_by: "compat-tests#3 (no QEMU CAN host bridge exists)"
 
           - target:      basic_ecu_doip_freertos
             transport:   DoIP
@@ -199,6 +212,8 @@ jobs:
             extra_overlay: ""
             needs_zcan_altname: false
             needs_zeth: false
+            experimental: true
+            blocked_by: "compat-tests#7 (lwIP stub, no real Ethernet driver)"
 
     env:
       XALOQI_LICENSE_SKIP: "1"
@@ -446,6 +461,130 @@ jobs:
         with:
           name: reports-${{ matrix.target }}
           path: reports/
+
+      # continue-on-error hides this leg's real conclusion from both the run
+      # list and any dependent job's `needs` context, so record it explicitly
+      # for matrix-summary to read back.
+      - name: Record leg outcome
+        if: always()
+        run: |
+          mkdir -p legstatus
+          {
+            echo "target=${{ matrix.target }}"
+            echo "transport=${{ matrix.transport }}"
+            echo "rtos=${{ matrix.rtos }}"
+            echo "experimental=${{ matrix.experimental }}"
+            echo "blocked_by=${{ matrix.blocked_by }}"
+            echo "status=${{ job.status }}"
+          } > "legstatus/${{ matrix.target }}.env"
+
+      - name: Upload leg outcome
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: legstatus-${{ matrix.target }}
+          path: legstatus/
+
+
+  # ---------------------------------------------------------------------------
+  # Job 4: Matrix summary (honest signal)
+  # full-matrix and compare are both continue-on-error, which is deliberate --
+  # they need GH_PAT and the README badge is this workflow's badge.svg, so a
+  # leg failing must not make the badge unreproducible for forkers (OD-14).
+  # The cost was that a run showed "success" while three of its jobs were red,
+  # and the only way to tell was to open each job. compat-tests#2 sat that way
+  # since at least 2026-08-25.
+  #
+  # This job restores the signal without touching the badge: it tabulates every
+  # leg's real conclusion in the run summary, treats a failing *experimental*
+  # leg as expected-and-explained (compat-tests#3 / #7), and raises a loud
+  # ::error:: annotation if a *verified* leg regresses -- the case that was
+  # actually being masked.
+  # ---------------------------------------------------------------------------
+  matrix-summary:
+    name: "Matrix summary"
+    runs-on: ubuntu-22.04
+    needs: [virtual-validation, full-matrix]
+    if: always()
+
+    steps:
+      - name: Download leg outcomes
+        uses: actions/download-artifact@v4
+        with:
+          pattern: legstatus-*
+          merge-multiple: true
+          path: legstatus/
+        continue-on-error: true
+
+      - name: Summarise
+        shell: bash
+        run: |
+          set -uo pipefail
+          summary="$GITHUB_STEP_SUMMARY"
+          {
+            echo "## Compatibility matrix"
+            echo ""
+            echo "Badge (\`virtual-validation\`): **${{ needs.virtual-validation.result }}** — free \`xaloqi-tester\`, no secret, reproducible in any fork."
+            echo ""
+            echo "| Target | Transport | RTOS | Tier | Result |"
+            echo "|---|---|---|---|---|"
+          } >> "$summary"
+
+          verified_failed=0
+          found=0
+          for f in legstatus/*.env; do
+            [ -e "$f" ] || continue
+            found=1
+            # Parse rather than `source`: blocked_by carries spaces and
+            # parentheses, which made `. "$f"` fail outright and silently fall
+            # back to the generic text (caught by running this locally against
+            # real leg files before shipping it).
+            field() { sed -n "s/^$1=//p" "$f" | head -1; }
+            target=$(field target)
+            transport=$(field transport)
+            rtos=$(field rtos)
+            experimental=$(field experimental)
+            blocked_by=$(field blocked_by)
+            status=$(field status)
+            if [ "$experimental" = "true" ]; then
+              tier="experimental"
+              if [ "$status" = "success" ]; then
+                result="passed (previously blocked)"
+              else
+                result="failed — known: ${blocked_by:-see open issues}"
+              fi
+            else
+              tier="verified"
+              if [ "$status" = "success" ]; then
+                result="passed"
+              else
+                result="**FAILED — regression**"
+                verified_failed=1
+                echo "::error title=Verified matrix leg failed::${target} (${transport}/${rtos}) is a verified leg and failed. This is a real regression, not a known infrastructure gap."
+              fi
+            fi
+            echo "| \`${target}\` | ${transport} | ${rtos} | ${tier} | ${result} |" >> "$summary"
+          done
+
+          if [ "$found" = "0" ]; then
+            echo "| _no leg outcomes recorded_ | | | | |" >> "$summary"
+            echo "::warning title=No matrix outcomes::full-matrix produced no leg-status artifacts; the matrix result is unknown for this run."
+          fi
+
+          {
+            echo ""
+            echo "**Verified** legs must pass — a failure there is a regression."
+            echo "**Experimental** legs are known-blocked on missing infrastructure"
+            echo "(compat-tests#3: no QEMU CAN host bridge; compat-tests#7: lwIP stub"
+            echo "with no real Ethernet driver). They are reported, not silently green."
+            echo ""
+            echo "The badge intentionally tracks \`virtual-validation\` only, so it stays"
+            echo "reproducible without \`GH_PAT\` (OD-14). This table is the full picture."
+          } >> "$summary"
+
+          if [ "$verified_failed" = "1" ]; then
+            echo "A verified leg regressed — see the annotations above." >&2
+          fi
 
   # ---------------------------------------------------------------------------
   # Job 3: Cross-target comparison

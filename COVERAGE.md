@@ -2,20 +2,15 @@
 
 **What this repository proves, and what it does not.**
 
-Last verified: **2026-09-10**.
-
-The two Zephyr legs were last verified against
-[workflow run 34427796014](https://github.com/Xaloqi/xaloqi-compatibility-tests/actions/runs/34427796014)
-on `main`, with `Xaloqi/EDS` at `main`.
-
-The `basic_ecu_doip_freertos` figures below come from
-[workflow run 34467041139](https://github.com/Xaloqi/xaloqi-compatibility-tests/actions/runs/34467041139),
-a throwaway verification branch that pinned the EDS checkout to the unmerged
-[EDS#267](https://github.com/Xaloqi/EDS/pull/267) branch. That was the only way
-to get a real CI result before EDS merged, since this workflow builds EDS at
-`ref: main`. Once EDS#267 is on EDS `main`, the leg runs identically from
-`main` here with no further change. **Until then this repository's own CI will
-show this leg red** — see the pull request description.
+Last verified: **2026-09-10**, against
+[workflow run 34468947722](https://github.com/Xaloqi/xaloqi-compatibility-tests/actions/runs/34468947722)
+on `main`, with `Xaloqi/EDS` at `main` — the first run of this repository's own
+CI after [EDS#267](https://github.com/Xaloqi/EDS/pull/267) merged. All three
+figures below, including `basic_ecu_doip_freertos`, come from that single run;
+the throwaway branch that proved the fix before EDS#267 merged
+([run 34467041139](https://github.com/Xaloqi/xaloqi-compatibility-tests/actions/runs/34467041139))
+has been deleted and is cited in this document only where it is the source of
+the negative control below.
 
 This document exists so that anyone relying on this repository as validation
 evidence can see the boundary without reading CI logs. Every figure below is
@@ -74,9 +69,9 @@ device it bound:
 `can_loopback0`. The host side is a `vcan0` interface created by the job itself.
 
 ```
-[01/08] tester_present                     → OK  (1 ms)
+[01/08] tester_present                     → OK  (2 ms)
 [02/08] session(extended)                  → OK  (2 ms)
-[03/08] security_access(level=1)           → OK  (34 ms)
+[03/08] security_access(level=1)           → OK  (42 ms)
 [04/08] read_did(0xF190)                   → OK  (6 ms)
 [05/08] read_dtc                           → OK  (2 ms)
 [06/08] clear_dtc                          → OK  (2 ms)
@@ -84,7 +79,7 @@ device it bound:
 [08/08] session(default)                   → OK  (2 ms)
 ```
 
-**8/8 steps, 1–34 ms.**
+**8/8 steps, 2–42 ms.**
 
 ### DoIP × Zephyr — `basic_ecu_doip`
 
@@ -137,9 +132,9 @@ successfully. The CI job asserts on the `netif up` line and fails the leg if it
 is absent, so this is a gate, not decoration.
 
 ```
-[01/08] tester_present                     → OK  (6 ms)
+[01/08] tester_present                     → OK  (5 ms)
 [02/08] session(extended)                  → OK  (4 ms)
-[03/08] security_access(level=1)           → OK  (42 ms)
+[03/08] security_access(level=1)           → OK  (40 ms)
 [04/08] read_did(0xF190)                   → OK  (4 ms)
 [05/08] read_dtc                           → OK  (4 ms)
 [06/08] clear_dtc                          → OK  (4 ms)
@@ -147,7 +142,7 @@ is absent, so this is a gate, not decoration.
 [08/08] session(default)                   → OK  (4 ms)
 ```
 
-**8/8 steps, 4–42 ms, 72 ms total.** The SecurityAccess step is ~10× the others
+**8/8 steps, 4–40 ms, 69 ms total.** The SecurityAccess step is ~10× the others
 because it is a full AES-128-CMAC seed/key round trip, matching the shape seen
 on both Zephyr legs.
 

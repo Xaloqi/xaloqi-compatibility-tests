@@ -31,7 +31,7 @@ ones) — both are TestLab Pro features and require a license — see
 | `basic_ecu` | CAN (ISO-TP, vcan0) | Zephyr 3.7 native_sim | `west build` |
 | `basic_ecu_doip` | DoIP (ISO 13400, TCP) | Zephyr 3.7 native_sim | `west build` |
 | `basic_ecu_freertos` | CAN (ISO-TP, vcan0) | FreeRTOS / QEMU Cortex-M4 | CMake + Ninja |
-| `basic_ecu_doip_freertos` | DoIP (ISO 13400, TCP) | FreeRTOS + LwIP / QEMU | CMake + Ninja |
+| `basic_ecu_doip_freertos` | DoIP (ISO 13400, TCP) | FreeRTOS + lwIP / QEMU `mps2-an386`, emulated LAN9118 MAC | CMake + Ninja |
 
 ---
 
@@ -218,8 +218,8 @@ summary** job prints the per-leg truth:
 
 | Tier | Legs | Meaning |
 |---|---|---|
-| **verified** | `basic_ecu` (CAN/Zephyr), `basic_ecu_doip` (DoIP/Zephyr) | Currently passing. A failure here is a real regression and raises a loud CI error annotation. |
-| **experimental** | `basic_ecu_freertos`, `basic_ecu_doip_freertos` (both QEMU) | Known-blocked on missing infrastructure ([#3](https://github.com/Xaloqi/xaloqi-compatibility-tests/issues/3), [#7](https://github.com/Xaloqi/xaloqi-compatibility-tests/issues/7)). Reported honestly, not silently skipped. |
+| **verified** | `basic_ecu` (CAN/Zephyr), `basic_ecu_doip` (DoIP/Zephyr), `basic_ecu_doip_freertos` (DoIP/FreeRTOS, QEMU) | Currently passing. A failure here is a real regression and raises a loud CI error annotation. |
+| **experimental** | `basic_ecu_freertos` (CAN/QEMU) | Known-blocked on missing infrastructure ([#3](https://github.com/Xaloqi/xaloqi-compatibility-tests/issues/3)) — no CAN controller is emulated at all, which is architectural rather than a missing driver. Reported honestly, not silently skipped. |
 
 Every leg stays `continue-on-error` on purpose: `full-matrix` needs
 `GH_PAT` for TestLab Pro, which a fork doesn't have, and the badge above
@@ -237,12 +237,16 @@ instead of in-process loopback devices: `basic_ecu` (real CAN, `vcan0`,
 [EDS#231](https://github.com/Xaloqi/EDS/issues/231)) and `basic_ecu_doip`
 (real DoIP, `zeth`, [EDS#230](https://github.com/Xaloqi/EDS/issues/230) /
 [#4](https://github.com/Xaloqi/xaloqi-compatibility-tests/issues/4)), both
-fixed. The remaining gaps are real, tracked infrastructure, not a
-mystery: no QEMU↔`vcan0` CAN bridge exists yet
-([#3](https://github.com/Xaloqi/xaloqi-compatibility-tests/issues/3)),
-and QEMU's own `hostfwd` DoIP path is still refused, unrelated to the
-native_sim fix above
-([#7](https://github.com/Xaloqi/xaloqi-compatibility-tests/issues/7)).
+fixed. `basic_ecu_doip_freertos` now runs a real FreeRTOS firmware image on
+QEMU `mps2-an386` against an emulated LAN9118 Ethernet MAC
+([EDS#267](https://github.com/Xaloqi/EDS/pull/267) /
+[#7](https://github.com/Xaloqi/xaloqi-compatibility-tests/issues/7)) — the
+lwIP stub named in #7 turned out to be the last of five blockers, the first
+being that the firmware image was empty because nothing defined a vector
+table. One gap remains, and it is architectural rather than a mystery: QEMU
+emulates no CAN controller for these targets at all, so there is nothing for a
+`vcan0` bridge to attach to
+([#3](https://github.com/Xaloqi/xaloqi-compatibility-tests/issues/3)).
 Tracking index: [#2](https://github.com/Xaloqi/xaloqi-compatibility-tests/issues/2).
 
 ---

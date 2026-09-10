@@ -199,9 +199,37 @@ jobs:
             extra_overlay: ""
             needs_zcan_altname: false
             needs_zeth: false
+            needs_lwip:  false
+            elf_name:    eds_freertos.elf
             experimental: true
             blocked_by: "compat-tests#3 (no QEMU CAN host bridge exists)"
 
+          # compat-tests#7 / EDS#267: this leg now runs a real firmware image
+          # against a real emulated Ethernet MAC.
+          #
+          # Three things were wrong here at once, and the lwIP stub named in
+          # #7 was only the last of them:
+          #
+          #  1. -machine lm3s6965evb is a Cortex-M3 machine, but this example
+          #     builds -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard, and
+          #     its own linker.ld + FreeRTOSConfig.h both already say
+          #     mps2-an386. A hard-float M4 image cannot run on an M3.
+          #     mps2-an386 is QEMU's Cortex-M4 MPS2 variant and emulates an
+          #     SMSC LAN9118 MAC at 0x40200000 -- hence -net nic,model=lan9118
+          #     rather than model=stellaris.
+          #  2. -kernel .../basic_ecu.elf named a file CMake has never
+          #     produced. The real output is eds_freertos_doip.elf; hence the
+          #     new elf_name matrix field.
+          #  3. EDS had no vector table or Reset_Handler at all, so
+          #     --gc-sections discarded the whole program and the ELF had
+          #     .text size 0. Fixed in EDS#267 along with the lwIP driver.
+          #
+          # needs_lwip clones lwIP (pinned STABLE-2_2_1_RELEASE) and passes
+          # -DLWIP_DIR, which switches EDS's example off the compile-only
+          # socket stub and onto the real stack. Without it the campaign
+          # fails at "DoIP: Routing Activation Response timed out" -- verified
+          # as the negative control, so this flag is load-bearing, not
+          # decorative.
           - target:      basic_ecu_doip_freertos
             transport:   DoIP
             rtos:        FreeRTOS
@@ -212,8 +240,10 @@ jobs:
             extra_overlay: ""
             needs_zcan_altname: false
             needs_zeth: false
-            experimental: true
-            blocked_by: "compat-tests#7 (lwIP stub, no real Ethernet driver)"
+            needs_lwip:  true
+            elf_name:    eds_freertos_doip.elf
+            experimental: false
+            blocked_by: ""
 
     env:
       XALOQI_LICENSE_SKIP: "1"
@@ -259,6 +289,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Xaloqi/EDS
+          # path: EDS is load-bearing — without it actions/checkout deletes the
+          # contents of the workspace root and clones EDS over the top of this
+          # repository's own checkout, taking configs/ and campaigns/ with it.
           path: EDS
           ref: main
           submodules: recursive
@@ -361,9 +394,27 @@ jobs:
           git clone --depth=1 https://github.com/FreeRTOS/FreeRTOS-Kernel.git \
             /opt/freertos-kernel
 
+      # compat-tests#7: lwIP is fetched, not vendored -- the same convention
+      # EDS already uses for FreeRTOS (FREERTOS_DIR) and Zephyr (west.yml).
+      # Pinned to a release tag, not a moving branch, so this leg cannot
+      # start failing because upstream changed.
+      - name: Install lwIP (real IP stack for the DoIP FreeRTOS leg)
+        if: matrix.build_type == 'freertos' && matrix.needs_lwip == true
+        run: |
+          git clone --depth=1 --branch STABLE-2_2_1_RELEASE \
+            https://github.com/lwip-tcpip/lwip.git /opt/lwip
+          test -f /opt/lwip/src/core/init.c
+
       - name: Build (FreeRTOS / QEMU)
         if: matrix.build_type == 'freertos'
         run: |
+          # -DLWIP_DIR is what switches EDS's basic_ecu_doip_freertos example
+          # from the compile-only socket stub (every call returns -1) to the
+          # real lwIP stack plus the LAN9118 driver added in EDS#267.
+          BUILD_ARGS=()
+          if [ "${{ matrix.needs_lwip }}" = "true" ]; then
+            BUILD_ARGS+=(-DLWIP_DIR=/opt/lwip)
+          fi
           cmake -S EDS/examples/${{ matrix.target }} \
                 -B build/${{ matrix.target }} \
                 -GNinja \
@@ -372,8 +423,22 @@ jobs:
                 -DBOARD=qemu_cortex_m4 \
                 -DCMAKE_BUILD_TYPE=Release \
                 -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
-                "-DCMAKE_C_FLAGS=-I$(pwd)/EDS/platform/zephyr"
+                "-DCMAKE_C_FLAGS=-I$(pwd)/EDS/platform/zephyr" \
+                "${BUILD_ARGS[@]}"
           ninja -C build/${{ matrix.target }}
+
+          # Guard against the exact regression that made this leg meaningless
+          # for so long: a link that "succeeds" while --gc-sections has
+          # discarded the entire program. Before EDS#267 the ELF here had
+          # .text size 0. Assert there is real code in it.
+          ELF="build/${{ matrix.target }}/${{ matrix.elf_name }}"
+          test -f "$ELF" || { echo "::error::expected ELF $ELF was not produced"; exit 1; }
+          TEXT=$(arm-none-eabi-size "$ELF" | awk 'NR==2 {print $1}')
+          echo "text segment: ${TEXT} bytes"
+          if [ "${TEXT}" -lt 4096 ]; then
+            echo "::error::${ELF} has only ${TEXT} bytes of .text — the image is empty or near-empty (see EDS#267 / EDS#268)."
+            exit 1
+          fi
 
       # ── CAN interface setup ───────────────────────────────────────────────
       - name: Set up vcan0
@@ -421,15 +486,40 @@ jobs:
           if [ "${{ matrix.build_type }}" = "zephyr" ]; then
             ./build/${{ matrix.target }}/zephyr/zephyr.exe &
           else
+            # -machine mps2-an386: QEMU's Cortex-M4 MPS2 variant. The previous
+            # lm3s6965evb is Cortex-M3 and could never have executed these
+            # hard-float M4 images; the example's own linker.ld and
+            # FreeRTOSConfig.h have always said mps2-an386. It emulates an
+            # SMSC LAN9118 MAC at 0x40200000, so model=lan9118 replaces the
+            # stellaris NIC that belonged to the M3 board.
+            #
+            # Serial goes to a file rather than /dev/null so the boot log is
+            # real, checkable evidence (uploaded below) instead of something
+            # inferred from whether a TCP connect happened to succeed.
+            mkdir -p reports
             qemu-system-arm \
-              -machine lm3s6965evb \
-              -kernel build/${{ matrix.target }}/basic_ecu.elf \
-              -net nic,model=stellaris \
+              -machine mps2-an386 \
+              -kernel build/${{ matrix.target }}/${{ matrix.elf_name }} \
+              -net nic,model=lan9118 \
               -net user,hostfwd=tcp::13400-:13400 \
-              -nographic -serial /dev/null &
+              -nographic -monitor none \
+              -serial file:reports/${{ matrix.target }}_boot.log &
           fi
           echo "ECU_PID=$!" >> "$GITHUB_ENV"
           sleep 2
+          # The FreeRTOS DoIP leg needs lwIP's tcpip thread up and the netif
+          # configured before port 13400 accepts anything. Locally that takes
+          # well under a second; allow generous margin on a shared runner.
+          if [ "${{ matrix.needs_lwip }}" = "true" ]; then
+            sleep 6
+            echo "----- guest boot log -----"
+            cat reports/${{ matrix.target }}_boot.log || true
+            echo "--------------------------"
+            if ! grep -q "netif up" reports/${{ matrix.target }}_boot.log; then
+              echo "::error::guest never reported 'netif up' — the IP stack did not come up."
+              exit 1
+            fi
+          fi
           # native_sim's real Ethernet bring-up (ARP settle on the zeth
           # bridge) needs more than the base 2s the other targets use --
           # the throwaway verification run wasn't reliably reachable until
@@ -575,8 +665,9 @@ jobs:
             echo ""
             echo "**Verified** legs must pass — a failure there is a regression."
             echo "**Experimental** legs are known-blocked on missing infrastructure"
-            echo "(compat-tests#3: no QEMU CAN host bridge; compat-tests#7: lwIP stub"
-            echo "with no real Ethernet driver). They are reported, not silently green."
+            echo "(compat-tests#3: no QEMU CAN host bridge — no CAN controller is"
+            echo "emulated at all, which is an architectural gap, not a missing"
+            echo "driver). They are reported, not silently green."
             echo ""
             echo "The badge intentionally tracks \`virtual-validation\` only, so it stays"
             echo "reproducible without \`GH_PAT\` (OD-14). This table is the full picture."

@@ -3,12 +3,13 @@
 [![Compatibility](https://github.com/Xaloqi/xaloqi-compatibility-tests/actions/workflows/compat.yml/badge.svg)](https://github.com/Xaloqi/xaloqi-compatibility-tests/actions/workflows/compat.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-One campaign. Four ECU simulators. Same result, every time.
+One campaign. Four ECU variants. Three real-transport paths validated. One documented infrastructure gap.
 
 This repository runs an identical [Xaloqi TestLab](https://github.com/Xaloqi/xaloqi-testlab-core)
-campaign against all four Xaloqi ECU simulator variants and proves they produce
-equivalent diagnostic behaviour regardless of transport (CAN / DoIP) or RTOS
-(Zephyr / FreeRTOS).
+campaign against all four Xaloqi ECU simulator variants (CAN/DoIP × Zephyr/FreeRTOS). 
+Three variants are currently validated end to end against real transports. 
+The remaining FreeRTOS/CAN variant is explicitly tracked as experimental because the current QEMU target provides no usable CAN path to host SocketCAN. 
+See COVERAGE.md and issue #3 for the evidence and limitation.
 
 **The quick check below (`--virtual`) runs entirely on the free, public
 [`xaloqi-tester`](https://pypi.org/project/xaloqi-tester/) package — no

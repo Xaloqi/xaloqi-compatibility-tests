@@ -11,6 +11,12 @@ Three variants are currently validated end to end against real transports.
 The remaining FreeRTOS/CAN variant is explicitly tracked as experimental because the current QEMU target provides no usable CAN path to host SocketCAN. 
 See COVERAGE.md and issue #3 for the evidence and limitation.
 
+**All three validated paths run with no hardware at all** — including one that
+runs a real cross-compiled ARM firmware image under emulation, serving DoIP over
+an emulated Ethernet MAC. If you are validating ECU workloads in a virtual guest,
+or building on a software-defined-vehicle platform whose layers stop below
+diagnostics, start at [Why this matters](#why-this-matters).
+
 **The quick check below (`--virtual`) runs entirely on the free, public
 [`xaloqi-tester`](https://pypi.org/project/xaloqi-tester/) package — no
 license, no private-repo access.** The full four-target build matrix uses
@@ -180,10 +186,53 @@ are externally indistinguishable at the UDS protocol level.
 
 ## Why this matters
 
+Two separate reasons. They are stated separately because they rest on different
+evidence, and conflating them would overstate both.
+
+### 1. Variant portability
+
 Automotive ECU software is validated on one hardware/OS combination and then
 deployed to production variants that may differ in RTOS or connectivity.
 This test suite provides continuous, machine-verifiable proof that the Xaloqi
 EDS implementation behaves identically across all supported configurations.
+
+### 2. Diagnostics validated without hardware — including inside a virtual guest
+
+This is the part that matters if you are building on a virtualised or
+software-defined-vehicle platform, and it is why this repository is more than a
+protocol matrix.
+
+**None of the three validated legs needs a board.** Two run Zephyr on
+`native_sim` against real host transports — a real SocketCAN controller and a
+real Ethernet bridge. The third runs a **real cross-compiled ARM firmware image
+under emulation**, serving DoIP over an **emulated SMSC LAN9118 MAC**, with the
+real lwIP socket binding and real driver bindings exercised above it. The guest
+reads the MAC's `ID_REV` register back and CI fails the leg if the `netif up`
+line is absent, so the driver genuinely reached its (emulated) hardware rather
+than merely initialising.
+
+That shape — a guest OS image, virtual hardware, a real diagnostic protocol over
+a real socket, gated in CI — is the same shape as validating an ECU workload in a
+guest domain on a hypervisor-partitioned platform. If your real-time domains run
+Zephyr or FreeRTOS and your platform layer stops below diagnostics (as
+general-purpose SDV reference platforms reasonably do), this is what the
+diagnostic layer's validation can look like before any silicon exists.
+
+**Two claims, two different strengths — do not merge them:**
+
+| Claim | Strength |
+|---|---|
+| The three validated legs need **no hardware** | Holds for all three. Real transports and real driver bindings, no board. |
+| The campaign is **reproducible by anyone, no credentials** | Holds for the `--virtual` quick check only — that is what the badge reflects. The real-transport legs need TestLab Pro in CI. |
+
+And the boundaries, in full, in [`COVERAGE.md`](COVERAGE.md): **no silicon
+target, no WCET evidence, no production Ethernet driver, no ISO 14229
+conformance certification, and one of the four variants not validated at all.**
+Read it before citing any of this as validation evidence.
+
+Background on why a diagnostics layer is usually missing from these platforms in
+the first place:
+[Where does diagnostics fit in the AGL SoDeV stack?](https://xaloqi.com/blog/agl-sodev-diagnostics-gap.html)
 
 ---
 

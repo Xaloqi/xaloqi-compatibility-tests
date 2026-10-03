@@ -742,7 +742,21 @@ jobs:
             echo "No JSON reports available — skipping HTML generation."
             exit 0
           fi
-          testlab report --results $jsons --out reports/compat_matrix.html
+          # `testlab report` exits non-zero when ANY input run failed. That is
+          # the wrong signal here: this job is informational by design (see the
+          # job header) and the only failing leg is the known-blocked
+          # experimental one, compat-tests#3. The two `testlab compare` steps
+          # above already use exactly this `|| echo ::warning::` idiom; `report`
+          # was simply missed, which left this job permanently red on every run
+          # and made every PR look broken.
+          #
+          # The HTML is still written before the non-zero exit, and the upload
+          # step below is `if: always()`, so nothing is lost by not failing here.
+          # `Matrix summary` remains the authoritative gate: it reads each leg's
+          # experimental/blocked_by metadata and emits a ::error:: only when a
+          # *verified* leg regresses.
+          testlab report --results $jsons --out reports/compat_matrix.html \
+            || echo "::warning::Comparison report flagged at least one failing run — expected while compat-tests#3 (CAN x FreeRTOS) is open. A verified-leg regression is reported by the Matrix summary job, not here."
 
       - name: Upload comparison report
         uses: actions/upload-artifact@v4

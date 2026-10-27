@@ -12,6 +12,8 @@
 #   "Core vs. Pro")
 #   west (Zephyr SDK) — for Zephyr targets
 #   arm-none-eabi-gcc / qemu-system-arm       — for FreeRTOS / QEMU targets
+#   sudo (net-tools' net-setup.sh creates the "zeth" TAP bridge for the Zephyr
+#   DoIP leg, as compat.yml does) and git, unless NET_TOOLS points at a checkout
 #   sudo modprobe vcan && sudo ip link add dev vcan0 type vcan && sudo ip link set up vcan0
 #
 # Quick start (--virtual only, no builds, no hardware):
@@ -37,7 +39,9 @@ REPORTS_DIR="${SCRIPT_DIR}/reports"
 VIRTUAL_ONLY=false
 SKIP_BUILD=false
 VCAN_IF="${VCAN_IF:-vcan0}"
-DOIP_HOST="${DOIP_HOST:-127.0.0.1}"
+DOIP_HOST="${DOIP_HOST:-127.0.0.1}"       # FreeRTOS DoIP: QEMU hostfwd
+ZETH_HOST="${ZETH_HOST:-192.0.2.1}"       # Zephyr DoIP: native_sim on the zeth bridge
+NET_TOOLS="${NET_TOOLS:-}"                # Zephyr net-tools checkout (zeth bridge)
 DOIP_PORT="${DOIP_PORT:-13400}"
 
 # ---------------------------------------------------------------------------
@@ -55,7 +59,9 @@ usage() {
     echo "  EDS_ROOT        Path to Xaloqi EDS repo (default: ../EDS)"
     echo "  FREERTOS_DIR    Path to FreeRTOS-Kernel (default: /opt/freertos-kernel)"
     echo "  VCAN_IF         SocketCAN interface (default: vcan0)"
-    echo "  DOIP_HOST       DoIP loopback host (default: 127.0.0.1)"
+    echo "  DOIP_HOST       FreeRTOS DoIP host, via QEMU port forward (default: 127.0.0.1)"
+    echo "  ZETH_HOST       Zephyr DoIP host on the zeth bridge (default: 192.0.2.1)"
+    echo "  NET_TOOLS       Path to zephyrproject-rtos/net-tools (default: cloned to a temp dir)"
     echo "  DOIP_PORT       DoIP TCP port (default: 13400)"
     echo "  XALOQI_TESTLAB_KEY    TestLab licence key for the real-transport legs (or ~/.xaloqi/testlab.key)"
 }
@@ -221,8 +227,13 @@ echo ""
 
 BUILD_DIR="${SCRIPT_DIR}/build"
 
+# build_zephyr <target> [board] [extra_conf]
+# extra_conf is compat.yml's matrix extra_conf verbatim: a ';'-separated list
+# relative to the EDS checkout, made absolute entry by entry (a relative path
+# resolves outside the workspace). tests/test_run_compat_matches_ci.py keeps
+# the calls below equal to compat.yml.
 build_zephyr() {
-    local target="$1" board="${2:-native_sim}"
+    local target="$1" board="${2:-native_sim}" extra_conf="${3:-}"
     local src_dir="${EDS_ROOT}/examples/${target}"
     local out_dir="${BUILD_DIR}/${target}"
 
@@ -231,10 +242,21 @@ build_zephyr() {
         return
     fi
 
+    local build_args=()
+    if [ -n "$extra_conf" ]; then
+        local part abs_confs=""
+        IFS=';' read -ra conf_parts <<< "$extra_conf"
+        for part in "${conf_parts[@]}"; do
+            abs_confs="${abs_confs:+${abs_confs};}${EDS_ROOT}/${part}"
+        done
+        build_args=(-DDIAG_SKIP_CODEGEN=ON "-DEXTRA_CONF_FILE=${abs_confs}")
+    fi
+
     log "  Building $target (Zephyr $board)..."
     west build -p always -b "$board" \
         --build-dir "$out_dir" \
-        "$src_dir" 2>&1 | tail -5 | sed "s/^/    /"
+        "$src_dir" \
+        ${build_args[@]:+-- "${build_args[@]}"} 2>&1 | tail -5 | sed "s/^/    /"
     ok "  Built: ${out_dir}/zephyr/zephyr.exe"
 }
 
@@ -270,7 +292,7 @@ echo "── Step 3: Build ─────────────────�
 echo ""
 
 build_zephyr basic_ecu        native_sim
-build_zephyr basic_ecu_doip   native_sim
+build_zephyr basic_ecu_doip   native_sim "boards/native_sim/native_sim.conf;examples/basic_ecu_doip/boards/native_sim/native_sim_doip_realzeth.conf"
 
 build_freertos basic_ecu_freertos
 build_freertos basic_ecu_doip_freertos
@@ -299,17 +321,34 @@ kill "${BG_PIDS[-1]}" 2>/dev/null || true
 BG_PIDS=("${BG_PIDS[@]::${#BG_PIDS[@]}-1}")
 sleep 0.5
 
-# ── 4b: basic_ecu_doip (Zephyr native_sim, DoIP loopback) ────────────────
+# ── 4b: basic_ecu_doip (Zephyr native_sim, DoIP over the zeth bridge) ─────
+# native_sim_doip_realzeth.conf puts the ECU on 192.0.2.1 behind a host TAP
+# device; the host side (192.0.2.2) is net-tools' net-setup.sh, same as the
+# "Set up zeth" step in compat.yml. Loopback is unreachable from a host client.
 
-log "Launching basic_ecu_doip (native_sim, DoIP)..."
+log "Setting up the zeth bridge (sudo net-setup.sh)..."
+if [ -z "$NET_TOOLS" ]; then
+    NET_TOOLS="$(mktemp -d)/net-tools"
+    git clone --depth=1 https://github.com/zephyrproject-rtos/net-tools "$NET_TOOLS" 2>&1 | sed "s/^/    /"
+fi
+( cd "$NET_TOOLS" && sudo ./net-setup.sh start ) &
+BG_PIDS+=($!)
+sleep 3
+ZETH_SETUP_PID="${BG_PIDS[-1]}"
+
+log "Launching basic_ecu_doip (native_sim, DoIP via zeth)..."
 "${BUILD_DIR}/basic_ecu_doip/zephyr/zephyr.exe" &
 BG_PIDS+=($!)
-wait_for_port "$DOIP_HOST" "$DOIP_PORT"
+sleep 6   # ARP settle on the zeth bridge (compat.yml waits the same)
+wait_for_port "$ZETH_HOST" "$DOIP_PORT"
 
 run_campaign "basic_ecu_doip" \
     --workspace "${SCRIPT_DIR}/configs/basic_ecu_doip.yaml"
 
 kill "${BG_PIDS[-1]}" 2>/dev/null || true
+BG_PIDS=("${BG_PIDS[@]::${#BG_PIDS[@]}-1}")
+( cd "$NET_TOOLS" && sudo ./net-setup.sh stop ) 2>&1 | sed "s/^/    /" || true
+kill "$ZETH_SETUP_PID" 2>/dev/null || true
 BG_PIDS=("${BG_PIDS[@]::${#BG_PIDS[@]}-1}")
 sleep 0.5
 

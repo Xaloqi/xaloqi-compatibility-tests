@@ -63,6 +63,25 @@ jobs:
           bash scripts/verify_closing_keyword_syntax.sh "${{ github.event.pull_request.base.sha }}"
 
   # ---------------------------------------------------------------------------
+  # Job 0b: run_compat.sh must build what this workflow builds (compat-tests#18).
+  # The local runner repeats the matrix by hand; this fails when they drift.
+  # ---------------------------------------------------------------------------
+  runner-matches-ci:
+    name: "run_compat.sh matches the CI matrix"
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install pytest pyyaml
+
+      - run: pytest tests/test_run_compat_matches_ci.py -v
+
+  # ---------------------------------------------------------------------------
   # Job 1: Virtual validation
   # Runs on every push/PR. No ECU builds, no hardware, no secrets. Installs
   # the free, public xaloqi-tester package from PyPI and runs the campaign

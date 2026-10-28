@@ -73,9 +73,6 @@ jobs:
     name: "Virtual validation (all services, no hardware)"
     runs-on: ubuntu-22.04
 
-    env:
-      XALOQI_LICENSE_SKIP: "1"
-
     steps:
       - uses: actions/checkout@v4
 
@@ -246,7 +243,10 @@ jobs:
             blocked_by: ""
 
     env:
-      XALOQI_LICENSE_SKIP: "1"
+      # TestLab removed the XALOQI_LICENSE_SKIP waiver (TestLab#75); the Pro
+      # CLI now needs a real key. Issued with --product xaloqi-testlab, stored
+      # as a repository secret, expires: renew it before then (compat-tests#21).
+      XALOQI_TESTLAB_KEY: ${{ secrets.XALOQI_TESTLAB_KEY }}
       ZEPHYR_SDK_VERSION:  "0.17.0"
 
     steps:
@@ -271,6 +271,10 @@ jobs:
         run: |
           if [ -z "$GH_PAT" ]; then
             echo "::error::GH_PAT secret is not set. Every full-matrix target needs TestLab Pro (real socketcan/DoIP transports) — see the top-of-file note. Skipping is fine; virtual-validation doesn't need it."
+            exit 1
+          fi
+          if [ -z "$XALOQI_TESTLAB_KEY" ]; then
+            echo "::error::XALOQI_TESTLAB_KEY secret is not set. The Pro CLI refuses to run without a licence key (XALOQI_LICENSE_SKIP no longer waives it, TestLab#75). Issue one with tools/keygen.py --product xaloqi-testlab; see compat-tests#21."
             exit 1
           fi
 
@@ -690,7 +694,10 @@ jobs:
     continue-on-error: true   # only meaningful when full-matrix reports exist
 
     env:
-      XALOQI_LICENSE_SKIP: "1"
+      # TestLab removed the XALOQI_LICENSE_SKIP waiver (TestLab#75); the Pro
+      # CLI now needs a real key. Issued with --product xaloqi-testlab, stored
+      # as a repository secret, expires: renew it before then (compat-tests#21).
+      XALOQI_TESTLAB_KEY: ${{ secrets.XALOQI_TESTLAB_KEY }}
 
     steps:
       - uses: actions/checkout@v4

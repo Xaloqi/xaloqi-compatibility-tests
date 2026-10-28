@@ -39,7 +39,6 @@ SKIP_BUILD=false
 VCAN_IF="${VCAN_IF:-vcan0}"
 DOIP_HOST="${DOIP_HOST:-127.0.0.1}"
 DOIP_PORT="${DOIP_PORT:-13400}"
-LICENSE_ENV="${XALOQI_LICENSE_SKIP:-0}"
 
 # ---------------------------------------------------------------------------
 # Argument parsing
@@ -58,7 +57,7 @@ usage() {
     echo "  VCAN_IF         SocketCAN interface (default: vcan0)"
     echo "  DOIP_HOST       DoIP loopback host (default: 127.0.0.1)"
     echo "  DOIP_PORT       DoIP TCP port (default: 13400)"
-    echo "  XALOQI_LICENSE_SKIP   Set to 1 to skip license check in CI"
+    echo "  XALOQI_TESTLAB_KEY    TestLab licence key for the real-transport legs (or ~/.xaloqi/testlab.key)"
 }
 
 for arg in "$@"; do
@@ -137,7 +136,7 @@ run_campaign() {
     local json_out="${REPORTS_DIR}/${target}_run.json"
 
     log "Running campaign against $target..."
-    if XALOQI_LICENSE_SKIP="${LICENSE_ENV}" testlab-run \
+    if testlab-run \
             --campaign "$CAMPAIGN" \
             --job      "$JOB"      \
             --json     "$json_out" \
@@ -372,7 +371,7 @@ compare_pair() {
     fi
 
     log "  Comparing $a vs $b..."
-    if XALOQI_LICENSE_SKIP="${LICENSE_ENV}" testlab compare \
+    if testlab compare \
             --before "$fa" --after "$fb" 2>&1 | sed "s/^/    /"; then
         ok "  $label → no regressions"
     else

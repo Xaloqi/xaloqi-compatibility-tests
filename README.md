@@ -75,7 +75,7 @@ cd xaloqi-compatibility-tests
 pip install xaloqi-tester
 
 # Run the virtual validation — proves the campaign YAML is correct
-XALOQI_LICENSE_SKIP=1 ./run_compat.sh --virtual
+./run_compat.sh --virtual
 ```
 
 Expected output:
@@ -106,9 +106,8 @@ sudo modprobe vcan
 sudo ip link add dev vcan0 type vcan
 sudo ip link set up vcan0
 
-# Run everything
-EDS_ROOT=../EDS FREERTOS_DIR=/opt/freertos-kernel \
-  XALOQI_LICENSE_SKIP=1 ./run_compat.sh
+# Run everything (needs a TestLab licence key: ~/.xaloqi/testlab.key or XALOQI_TESTLAB_KEY)
+EDS_ROOT=../EDS FREERTOS_DIR=/opt/freertos-kernel ./run_compat.sh
 ```
 
 Results land in `reports/`:

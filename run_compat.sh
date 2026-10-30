@@ -227,13 +227,14 @@ echo ""
 
 BUILD_DIR="${SCRIPT_DIR}/build"
 
-# build_zephyr <target> [board] [extra_conf]
-# extra_conf is compat.yml's matrix extra_conf verbatim: a ';'-separated list
-# relative to the EDS checkout, made absolute entry by entry (a relative path
-# resolves outside the workspace). tests/test_run_compat_matches_ci.py keeps
-# the calls below equal to compat.yml.
+# build_zephyr <target> [board] [extra_conf] [extra_overlay]
+# extra_conf / extra_overlay are compat.yml's matrix values verbatim: relative to
+# the EDS checkout; extra_conf is a ';'-separated list, each entry made absolute
+# (a relative path resolves outside the workspace). extra_overlay becomes
+# -DDTC_OVERLAY_FILE (basic_ecu's real native-linux-can node, EDS#231).
+# tests/test_run_compat_matches_ci.py keeps the calls below equal to compat.yml.
 build_zephyr() {
-    local target="$1" board="${2:-native_sim}" extra_conf="${3:-}"
+    local target="$1" board="${2:-native_sim}" extra_conf="${3:-}" extra_overlay="${4:-}"
     local src_dir="${EDS_ROOT}/examples/${target}"
     local out_dir="${BUILD_DIR}/${target}"
 
@@ -250,6 +251,9 @@ build_zephyr() {
             abs_confs="${abs_confs:+${abs_confs};}${EDS_ROOT}/${part}"
         done
         build_args=(-DDIAG_SKIP_CODEGEN=ON "-DEXTRA_CONF_FILE=${abs_confs}")
+    fi
+    if [ -n "$extra_overlay" ]; then
+        build_args+=("-DDTC_OVERLAY_FILE=${EDS_ROOT}/${extra_overlay}")
     fi
 
     log "  Building $target (Zephyr $board)..."
@@ -291,7 +295,7 @@ build_freertos() {
 echo "── Step 3: Build ──────────────────────────────────────────────────"
 echo ""
 
-build_zephyr basic_ecu        native_sim
+build_zephyr basic_ecu        native_sim "boards/native_sim/native_sim_realcan.conf" "boards/native_sim/native_sim_realcan.overlay"
 build_zephyr basic_ecu_doip   native_sim "boards/native_sim/native_sim.conf;examples/basic_ecu_doip/boards/native_sim/native_sim_doip_realzeth.conf"
 
 build_freertos basic_ecu_freertos
@@ -307,6 +311,14 @@ echo "── Step 4: Run campaigns ───────────────
 echo ""
 
 # ── 4a: basic_ecu (Zephyr native_sim, CAN/vcan0) ──────────────────────────
+
+# EDS#231: the real native-linux-can node defaults to host interface "zcan0".
+# compat.yml (needs_zcan_altname) adds it as an altname of vcan0 rather than
+# renaming vcan0, which the FreeRTOS CAN leg also uses.
+if ! ip link show zcan0 &>/dev/null; then
+    log "Adding the zcan0 altname to $VCAN_IF (sudo)..."
+    sudo ip link property add dev "$VCAN_IF" altname zcan0
+fi
 
 log "Launching basic_ecu (native_sim, CAN)..."
 "${BUILD_DIR}/basic_ecu/zephyr/zephyr.exe" &

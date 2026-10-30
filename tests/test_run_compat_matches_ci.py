@@ -25,13 +25,13 @@ MATRIX = {
     for leg in WORKFLOW["jobs"]["full-matrix"]["strategy"]["matrix"]["include"]
 }
 
-# build_zephyr <target> <board> ["<conf;conf>"]  (not the function definition)
-_CALL = re.compile(r'^build_zephyr\s+(\w+)\s+(\w+)(?:\s+"([^"]*)")?\s*$', re.M)
-SCRIPT_BUILDS = {m.group(1): (m.group(2), m.group(3) or "") for m in _CALL.finditer(SCRIPT)}
-
-# The CAN leg has the same gap (needs the realcan conf + overlay + zcan0
-# altname); xaloqi-compatibility-tests#19, not part of #18.
-KNOWN_DRIFT = {"basic_ecu"}
+# build_zephyr <target> <board> ["<conf;conf>" ["<overlay>"]]  (not the definition)
+_CALL = re.compile(
+    r'^build_zephyr\s+(\w+)\s+(\w+)(?:\s+"([^"]*)")?(?:\s+"([^"]*)")?\s*$', re.M)
+SCRIPT_BUILDS = {
+    m.group(1): (m.group(2), m.group(3) or "", m.group(4) or "")
+    for m in _CALL.finditer(SCRIPT)
+}
 
 
 def test_script_builds_are_found() -> None:
@@ -40,14 +40,27 @@ def test_script_builds_are_found() -> None:
 
 @pytest.mark.parametrize("target", sorted(SCRIPT_BUILDS))
 def test_zephyr_build_uses_ci_conf_list(target: str) -> None:
-    if target in KNOWN_DRIFT:
-        pytest.xfail("CAN leg not yet aligned with CI (separate issue)")
     leg = MATRIX[target]
-    board, conf = SCRIPT_BUILDS[target]
+    board, conf, overlay = SCRIPT_BUILDS[target]
     assert board == leg["board"]
     assert conf == leg["extra_conf"], (
         f"{target}: run_compat.sh passes {conf!r}, compat.yml passes {leg['extra_conf']!r}"
     )
+    assert overlay == leg["extra_overlay"], (
+        f"{target}: run_compat.sh passes overlay {overlay!r}, "
+        f"compat.yml passes {leg['extra_overlay']!r}"
+    )
+
+
+def test_overlay_becomes_dtc_overlay_file() -> None:
+    assert '"-DDTC_OVERLAY_FILE=${EDS_ROOT}/${extra_overlay}"' in SCRIPT
+
+
+def test_can_leg_gets_the_zcan0_altname_like_ci() -> None:
+    # compat.yml adds the altname only where needs_zcan_altname is true.
+    assert MATRIX["basic_ecu"]["needs_zcan_altname"] is True
+    assert "property add dev \"$VCAN_IF\" altname zcan0" in SCRIPT
+    assert not MATRIX["basic_ecu_doip"]["needs_zcan_altname"]
 
 
 def test_doip_leg_sets_up_zeth_like_ci() -> None:

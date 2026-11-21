@@ -231,7 +231,7 @@ Read it before citing any of this as validation evidence.
 
 Background on why a diagnostics layer is usually missing from these platforms in
 the first place:
-[Where does diagnostics fit in the AGL SoDeV stack?](https://xaloqi.com/blog/agl-sodev-diagnostics-gap.html)
+[Where does diagnostics fit in the AGL SoDeV stack?](https://xaloqi.com/blog/agl-sodev-diagnostics-gap)
 
 ---
 
@@ -248,7 +248,7 @@ is Pro-gated exactly like `doip` is.
 |---|---|---|
 | Transport | in-process `VirtualBus` | real `socketcan` (vcan0) or real `doip` (TCP) |
 | Package | `xaloqi-tester` (free, [PyPI](https://pypi.org/project/xaloqi-tester/)) | TestLab Pro |
-| License | None | [xaloqi.com](https://xaloqi.com) |
+| License | None | [TestLab Pro](https://xaloqi.com/testlab#pricing) |
 | Reproducible by anyone | ✅ | Needs Pro |
 
 Virtual validation (the badge above) runs on the free package with no
